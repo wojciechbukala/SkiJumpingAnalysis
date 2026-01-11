@@ -10,14 +10,15 @@ def setup() -> DataModel:
     return dataModel
 
 def plot_profile(hillModel) -> None:
-    xs,ys=hillModel.sample()
+    (xs1, ys1), (xs2, ys2) = hillModel.sample() 
     plt.figure()
-    plt.plot(xs, ys)
-    plt.title(f"Ski Jump Hill Profile - {hillModel.slope_data.name}")
+    plt.plot(xs1, ys1)
+    plt.plot(xs2, ys2)
+    plt.title(f"Ski Jump Hill Profile - {hillModel.name}")
     plt.xlabel("x (m)")
     plt.ylabel("y (m)")
     plt.grid(True)
-    plt.axis("equal")  # utile per non deformare le pendenze
+    plt.axis("equal")
     plt.show()
 
 def main() -> None:
