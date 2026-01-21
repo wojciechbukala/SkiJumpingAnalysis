@@ -15,6 +15,8 @@ class DataModel:
     takeoff_length: float = 0.0
     takeoff_height: float = 0.0
     landing_angle: float = 0.0
+    hill_size: float = 0.0
+    k_point: float = 0.0
 
     # predefined slope profiles (keys should match the attributes above)
     _PROFILES: ClassVar[Dict[str, Dict[str, Any]]] = {
@@ -27,6 +29,8 @@ class DataModel:
             "takeoff_length": 6.5,
             "takeoff_height": 3.38,
             "landing_angle": 35.5,
+            "hill_size":106,
+            "k_point": 95,
         },
                 "obersdorf": {
             "tot_height": 140.0,
@@ -37,6 +41,8 @@ class DataModel:
             "takeoff_length": 6.5,
             "takeoff_height": 3.38,
             "landing_angle": 35.5,
+            "hill_size":106,
+            "k_point": 95,
         },
     }
 
@@ -55,7 +61,8 @@ class DataModel:
         self.takeoff_height = float(data.get("takeoff_height", 0.0))
         self.landing_angle = float(data.get("landing_angle", 0.0))
         self.inrun_length = float(data.get("inrun_length", 0.0))
-        self.inrun_length = float(data.get("inrun_length", 0.0))
+        self.hill_size = float(data.get("hill_size", 0.0))
+        self.k_point = float(data.get("k_point", 0.0))
 
 
     def to_dict(self) -> dict:
@@ -69,4 +76,6 @@ class DataModel:
             "takeoff_length": self.takeoff_length,
             "takeoff_height": self.takeoff_height,
             "landing_angle": self.landing_angle,
+            "hill_size": self.hill_size,
+            "k_point": self.k_point,
         }

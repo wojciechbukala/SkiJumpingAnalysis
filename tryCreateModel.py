@@ -9,8 +9,8 @@ def setup() -> DataModel:
     print("Selected slope model:", dataModel.name)
     return dataModel
 
-def plot_profile(hillModel) -> None:
-    (xs1, ys1), (xs2, ys2) = hillModel.sample() 
+def plot_profile(hillModel, x_max: float | None = None) -> None:
+    (xs1, ys1), (xs2, ys2) = hillModel.sample(x_max)
     plt.figure()
     plt.plot(xs1, ys1)
     plt.plot(xs2, ys2)
@@ -19,13 +19,18 @@ def plot_profile(hillModel) -> None:
     plt.ylabel("y (m)")
     plt.grid(True)
     plt.axis("equal")
+    # set x-limits to start at the inrun start and end at requested x_max (or hill end)
+    x_start = float(hillModel.x_inrun_start)
+    x_end = float(x_max) if x_max is not None else float(hillModel.x_end)
+    plt.xlim(x_start, x_end)
     plt.show()
 
 def main() -> None:
     dataModel=setup()
     hillModel=HillModel(dataModel)
     print("Hill model created with the selected slope model.")
-    plot_profile(hillModel)
+    # distanza massima da inizio pista
+    plot_profile(hillModel, x_max=300.0)
 
 
 if __name__ == "__main__":
