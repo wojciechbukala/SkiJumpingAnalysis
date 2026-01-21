@@ -29,7 +29,7 @@ def main() -> None:
     dataModel=setup()
     hillModel=HillModel(dataModel)
     print("Hill model created with the selected slope model.")
-    # distanza massima da inizio pista
+    # max distance to plot
     plot_profile(hillModel, x_max=300.0)
 
 
