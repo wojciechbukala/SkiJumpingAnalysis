@@ -7,6 +7,7 @@ import switchCam as shotChange
 def main() -> int:
     # Resolve the video path from the project root.
     root_dir = Path(__file__).resolve().parents[1]
+    # Set the path to the video file.
     video_path = root_dir / "videos/20.mp4"
 
     # Open the video and run shot-change detection.
