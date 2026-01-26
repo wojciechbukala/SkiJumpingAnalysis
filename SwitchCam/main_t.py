@@ -17,12 +17,15 @@ def main() -> int:
         return 1
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+    #changes is a list of ShotChange objects it has frame_idx,time_s,score
     changes = shotChange.detect_shot_changes(cap, fps=fps)
     cap.release()
 
     print(f"Video: {video_path}")
     print(f"Detected changes: {len(changes)}")
     print(shotChange.format_changes(changes))
+
+    
     return 0
 
 

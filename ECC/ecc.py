@@ -1,26 +1,3 @@
-"""
-Image alignment using Enhanced Correlation Coefficient (ECC) Maximization
-
-Original url:
-https://www.learnopencv.com/image-alignment-ecc-in-opencv-c-python/
-
-Motion models:
-    - Translation
-    - Euclidean
-    - Affine
-    - Homography
-
-cv2.findTransformECC():
-    - Read the images.
-    - Convert them to grayscale.
-    - Pick a motion model you want to estimate.
-    - Allocate space (warp_matrix) to store the motion model.
-    - Define a termination criteria that tells the algorithm when to stop.
-    - Estimate the warp matrix using findTransformECC.
-    - Apply the warp matrix to one of the images to align it with the other image.
-
-"""
-
 # Import the packages
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -83,7 +60,8 @@ def ecc_2frame(
     # Run the ECC algorithm. The results are stored in warp_matrix.
     # cc is the correlation coefficient
     (cc, warp_matrix) = cv2.findTransformECC(im1, im2, warp_matrix, warp_mode, criteria, inputMask=mask, gaussFiltSize=gaussFiltSize)
-
+    # If the warp mode is AFFINE, then convert the warp matrix to 3x3
+    warp_matrix = np.vstack([warp_matrix, [0, 0, 1]]) if warp_mode == cv2.MOTION_AFFINE else warp_matrix
     return cc, warp_matrix
 
 

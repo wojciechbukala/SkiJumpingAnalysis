@@ -1,45 +1,51 @@
 import numpy as np
 import cv2
 import pandas as pd
-OVERLAY_RECTS: list[tuple[int,int,int,int]] = [
-    (0,39,538,296)
-    (0,544,752,1046)
+
+OVERLAY_RECTS: list[tuple[int, int, int, int]] = [
+    (0, 39, 538, 296),
+    (0, 544, 752, 1046),
 ]
-OVERLAY_RECTS2: list[tuple[int,int,int,int]] = [
-    (0,39,538,296)
-    (83,922,571,984)
+OVERLAY_RECTS2: list[tuple[int, int, int, int]] = [
+    (0, 39, 538, 296),
+    (83, 922, 571, 984),
 ]
 
-def create_mask(frame_shape: tuple[int, int],
-                 prev_idx: int =0  ,  
-                margin:int=20,
+def create_mask(
+    frame_shape: tuple[int, int],
+    prev_idx: int = 0,
+    margin: int = 20,
+) -> np.ndarray:
+    height, width = frame_shape
+    mask = np.ones((height, width), dtype=np.uint8) * 255
 
-                ) -> np.ndarray: 
-        high, width = frame_shape 
-        mask=np.ones((high, width), dtype=np.uint8)*255
-        skier_bbox = get_bbox(prev_idx)
-    # Mask out the skier region if bbox is provided
-        if skier_bbox is not None:
-            x, y, w, h = skier_bbox
-            x1 = max(x - margin, 0)
-            y1 = max(y - margin, 0)
-            x2 = min(x + w + margin, width)
-            y2 = min(y + h + margin, high)
+    skier_bbox = get_bbox(prev_idx)
+    if skier_bbox is not None:
+        x1, y1, x2, y2 = map(int, skier_bbox)
+        x1 = max(x1 - margin, 0)
+        y1 = max(y1 - margin, 0)
+        x2 = min(x2 + margin, width)
+        y2 = min(y2 + margin, height)
+        mask[y1:y2, x1:x2] = 0
+
+    # Mask out any overlay rectangles (x1, y1, x2, y2).
+    overlay_rects = OVERLAY_RECTS if prev_idx < 150 else OVERLAY_RECTS2
+    for (x1, y1, x2, y2) in overlay_rects:
+        x1 = max(0, min(int(x1), width))
+        y1 = max(0, min(int(y1), height))
+        x2 = max(0, min(int(x2), width))
+        y2 = max(0, min(int(y2), height))
+        if x2 > x1 and y2 > y1:
             mask[y1:y2, x1:x2] = 0
-            #if time<5seconds
-        ovr = OVERLAY_RECTS if prev_idx < 150 else OVERLAY_RECTS2
-    # Mask out any overlay rectangles if provided
-        if ovr is not None:
-            for (x, y, w, h) in ovr:
-                mask[y:y+h, x:x+w] = 0
-        return mask
+
+    return mask
 
 
 from pathlib import Path
 # Resolve the video path from the project root.
 root_dir = Path(__file__).resolve().parents[1]
 # Set the path to the video file.
-csv_path = root_dir / "jumperbox/20.csv"
+csv_path = root_dir / "jumperbox/20trajectory_2d.csv"
 
 
 df = pd.read_csv(csv_path)  # es: colonne frame,x1,y1,x2,y2
