@@ -40,6 +40,7 @@ def ecc_2frame(
     prev_idx: int,
     im1: np.ndarray,
     im2: np.ndarray,
+    provider: Masking.JumperProvider,
     warp_mode: int = cv2.MOTION_AFFINE,
     number_of_iterations: int = 200, # maximum number of iterations to find the warp matrix
     termination_eps: float = 1e-6, # treshold of convergence
@@ -50,8 +51,8 @@ def ecc_2frame(
     im2 = im2.astype(np.float32)/255.0
     # Define termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,number_of_iterations,  termination_eps)
-    mask1= Masking.create_mask(im1.shape,prev_idx)
-    mask2= Masking.create_mask(im2.shape,prev_idx+1)
+    mask1= Masking.create_mask(im1.shape, provider, prev_idx)
+    mask2= Masking.create_mask(im2.shape, provider, prev_idx+1)
     # Combine masks with bitwise AND
     mask = cv2.bitwise_and(mask1, mask2)
     # Initialize warp_matrix before calling the transform finder
@@ -177,6 +178,7 @@ def find_right_transform(
 # Returns a list of EccResult objects.
 def detect_ecc_motion_sequence(
     cap,
+    provider: Masking.JumperProvider
 ) -> list[EccResult]:
     generatorFrame = iter_frames(cap)
 
@@ -191,6 +193,7 @@ def detect_ecc_motion_sequence(
                 prev_idx,
                 prev,
                 curr,
+                provider
             )
             results.append(EccResult(
                 prev_idx=prev_idx,
