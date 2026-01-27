@@ -14,11 +14,12 @@ OVERLAY_RECTS2: list[tuple[int, int, int, int]] = [
 def create_mask(
     frame_shape: tuple[int, int],
     prev_idx: int = 0,
-    margin: int = 20,
+    margin: int = 1,
 ) -> np.ndarray:
     height, width = frame_shape
+    # Start with a mask that is all valid (255)
     mask = np.ones((height, width), dtype=np.uint8) * 255
-
+    # put a 0 where the skier is
     skier_bbox = get_bbox(prev_idx)
     if skier_bbox is not None:
         x1, y1, x2, y2 = map(int, skier_bbox)
@@ -29,6 +30,7 @@ def create_mask(
         mask[y1:y2, x1:x2] = 0
 
     # Mask out any overlay rectangles (x1, y1, x2, y2).
+    # put a 0 where there are overlay rectangles
     overlay_rects = OVERLAY_RECTS if prev_idx < 150 else OVERLAY_RECTS2
     for (x1, y1, x2, y2) in overlay_rects:
         x1 = max(0, min(int(x1), width))

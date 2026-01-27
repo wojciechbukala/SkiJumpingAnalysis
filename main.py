@@ -16,7 +16,7 @@ SkiJumpingAnalysis - main skeleton
 
 File: main.py
 """
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 def plot_trajectories_2d(trajectory_list: list[list[tuple[int,int,int]]]) -> None:
         if not trajectory_list:
@@ -66,13 +66,17 @@ def main(argv: Optional[list] = None) -> int:
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
     list_of_warp_matrices: list[EccResult] = ECC.ecc.detect_ecc_motion_sequence(cap)
     refFrame=0
+    endFrame=int(cap.get(cv2.CAP_PROP_FRAME_COUNT))-1
     trajectory_list: list[list[tuple[float,float,float]]] = []
-    for shot in range(len(changes)+1):   
-        trajectory_list.append(tj.compute_trajectory(list_of_warp_matrices,refFrame,changes[shot].frame_idx))
-        if shot<len(changes):
+    for shot in range(len(changes)+1): 
+
+        if shot<len(changes): 
+            trajectory_list.append(tj.compute_trajectory(list_of_warp_matrices,refFrame,changes[shot].frame_idx))
+ 
             refFrame=changes[shot].frame_idx
         else:
-            refFrame=int(cap.get(cv2.CAP_PROP_FRAME_COUNT))-1
+            trajectory_list.append(tj.compute_trajectory(list_of_warp_matrices,refFrame,endFrame))
+
 
     # Plot all collected trajectories
     plot_trajectories_2d(trajectory_list)
