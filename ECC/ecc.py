@@ -7,8 +7,8 @@ import cv2
 import numpy as np
 
 DEFAULT_SAMPLE_RATE = 1
-# Global switch: "ecc"  → use ECC for all frames
-# anything else → use SIFT + RANSAC for all frames
+# Global switch: "ecc" use ECC for all frames
+# anything else use SIFT + RANSAC for all frames
 GLOBAL_VAR = "ransac"
 
 @dataclass
@@ -118,6 +118,8 @@ def find_right_transform(
             return 0.0, _identity_warp(warp_mode)
 
         # 4.2) Match descriptors (L2 + ratio test)
+        # it's used to find feasible correspondences between the two images
+        # L2 is used because SIFT uses L2 distance that is Euclidean distance in descriptor space 
         bf = cv2.BFMatcher(cv2.NORM_L2)
         matches = bf.knnMatch(des1, des2, k=2)
         good = []
@@ -131,7 +133,7 @@ def find_right_transform(
         pts1 = np.float32([kp1[m.queryIdx].pt for m in good])
         pts2 = np.float32([kp2[m.trainIdx].pt for m in good])
 
-        # 4.4) Estimate affine (or Euclidean) with RANSAC
+        # 4.4) Estimate affine (or Euclidean) with RANSAC given the two point sets that are in correspondence
         if warp_mode == cv2.MOTION_AFFINE:
             A, inliers = cv2.estimateAffine2D(
                 pts1, pts2,
