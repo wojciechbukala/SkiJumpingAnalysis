@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Optional
 import cv2
 from SwitchCam import switchCam as shotChange
-from ECC.ecc import EccResult 
-import ECC.ecc
+from transform.transform import EccResult 
+import transform.transform as affineTransform
 import jumperTrajectory.trajectory as tj
 from Mask.Masking import JumperProvider
 import matplotlib.pyplot as plt
@@ -66,7 +66,7 @@ def main(video_path: Path, csv_path: Path) -> int:
 
     # Shot-change detection consumes the capture; rewind before running ECC.
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-    list_of_warp_matrices: list[EccResult] = ECC.ecc.detect_ecc_motion_sequence(cap, provider)
+    list_of_warp_matrices: list[EccResult] = affineTransform.detect_ecc_motion_sequence(cap, provider)
     refFrame=0
     endFrame=int(cap.get(cv2.CAP_PROP_FRAME_COUNT))-1
     trajectory_list: list[list[tuple[float,float,float]]] = []

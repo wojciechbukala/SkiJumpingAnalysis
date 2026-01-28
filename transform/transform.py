@@ -1,7 +1,7 @@
 # Import the packages
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List,Tuple
 from Mask import Masking
 import cv2
 import numpy as np
