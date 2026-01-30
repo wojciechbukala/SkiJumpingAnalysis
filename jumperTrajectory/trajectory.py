@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from ECC.ecc import EccResult
+from transform.transform import EccResult
 from Mask import Masking
 
 

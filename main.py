@@ -1,6 +1,3 @@
-import argparse
-import logging
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -64,7 +61,7 @@ def main(video_path: Path, csv_path: Path) -> int:
     print(f"Detected changes: {len(changes)}")
     print(shotChange.format_changes(changes))
 
-    # Shot-change detection consumes the capture; rewind before running ECC.
+    # Shot-change detection consumes the capture; rewind before running ECC/RANSAC.
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
     list_of_warp_matrices: list[EccResult] = affineTransform.detect_ecc_motion_sequence(cap, provider)
     refFrame=0

@@ -85,12 +85,12 @@ def find_right_transform(
     min_inlier_ratio: float = 0.25,
 ) -> tuple[float, np.ndarray]:
     valid_mask = inputMask
-    # 2) Texture gating (mean Sobel magnitude)
+    # Texture gating (mean Sobel magnitude)
     mean_mag = _mean_sobel_mag(im1, valid_mask)
     if mean_mag < sobel_th:
         return 0.0, _identity_warp(warp_mode)
 
-    # 3) ECC branch
+    # ECC branch
     if str(GLOBAL_VAR).lower() == "ecc":
         try:
             warp = init_warp.copy().astype(np.float32)
@@ -106,35 +106,38 @@ def find_right_transform(
         except cv2.error:
             return 0.0, _identity_warp(warp_mode)
 
-    # 4) SIFT + RANSAC branch
+    # SIFT + RANSAC branch
     try:
         im1_u8 = _to_u8(im1)
         im2_u8 = _to_u8(im2)
 
-        # 4.1) Detect and compute SIFT descriptors
+        # Detect and compute SIFT descriptors
         sift = cv2.SIFT_create(nfeatures=sift_nfeatures)
         kp1, des1 = sift.detectAndCompute(im1_u8, valid_mask)
         kp2, des2 = sift.detectAndCompute(im2_u8, valid_mask)
         if des1 is None or des2 is None or len(kp1) < 6 or len(kp2) < 6:
             return 0.0, _identity_warp(warp_mode)
 
-        # 4.2) Match descriptors (L2 + ratio test)
+        # Match descriptors (L2 + ratio test)
         # it's used to find feasible correspondences between the two images
         # L2 is used because SIFT uses L2 distance that is Euclidean distance in descriptor space 
         bf = cv2.BFMatcher(cv2.NORM_L2)
+        # knn works by finding the k best matches for each descriptor from des1 to des2
         matches = bf.knnMatch(des1, des2, k=2)
         good = []
+        # m is the best match, n is the second best match
         for m, n in matches:
+            # Apply ratio test: if the distance of the best match is significantly lower than the second best, it's a good match
             if m.distance < 0.75 * n.distance:
                 good.append(m)
         if len(good) < 6:
             return 0.0, _identity_warp(warp_mode)
 
-        # 4.3) Convert matches to point arrays
+        # Convert matches to point arrays
         pts1 = np.float32([kp1[m.queryIdx].pt for m in good])
         pts2 = np.float32([kp2[m.trainIdx].pt for m in good])
 
-        # 4.4) Estimate affine (or Euclidean) with RANSAC given the two point sets that are in correspondence
+        # Estimate affine (or Euclidean) with RANSAC given the two point sets that are in correspondence
         if warp_mode == cv2.MOTION_AFFINE:
             A, inliers = cv2.estimateAffine2D(
                 pts1, pts2,
