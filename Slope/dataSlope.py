@@ -30,9 +30,9 @@ class DataModel:
             "takeoff_height": 3.38,
             "landing_angle": 35.5,
             "hill_size":106,
-            "k_point": 95,
+            "k_point": 120,
         },
-                "obersdorf": {
+        "obersdorf": {
             "tot_height": 140.0,
             "tower_height": 44.0,
             "inrun_length": 99.0,
@@ -41,9 +41,21 @@ class DataModel:
             "takeoff_length": 6.5,
             "takeoff_height": 3.38,
             "landing_angle": 35.5,
-            "hill_size":106,
-            "k_point": 95,
+            "hill_size":137,
+            "k_point": 120,
         },
+        "gapa": {
+            "tot_height": 142.0,
+            "tower_height": 60.4,
+            "inrun_length": 96.0,
+            "inrun_angle": 35.0,
+            "takeoff_angle": 11.0,
+            "takeoff_length": 6.9,
+            "takeoff_height": 3.2,
+            "landing_angle": 34.7,
+            "hill_size":142,
+            "k_point": 125,
+        }
     }
 
     def __init__(self, profile_name: str):

@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from scipy.integrate import trapezoid
 
 def deg_to_rad(deg: float) -> float:
     return deg * (math.pi / 180.0)
@@ -45,7 +46,7 @@ def curve_arclength(x0, x1, dy_fun, n=2000):
     xs = np.linspace(x0, x1, n)
     dys = np.array([dy_fun(float(x)) for x in xs], dtype=float)
     integrand = np.sqrt(1.0 + dys**2)
-    return float(np.trapz(integrand, xs))
+    return float(trapezoid(integrand, xs))
 
 def _as_abs_x(x_candidate: float, x_ref: float) -> float:
     # If x is not beyond landing start, treat it as offset
