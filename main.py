@@ -14,8 +14,9 @@ SkiJumpingAnalysis - main skeleton
 
 File: main.py
 """
-__version__ = "0.0.2"
-
+__version__ = "0.0.3"
+# CHANGE HERE TO SET THE DESIRED MOTION MODEL !!!!!!!!!!!!!!!!!!!!!
+WARP_MODE = cv2.MOTION_AFFINE
 def plot_trajectories_2d(trajectory_list: list[list[tuple[int,int,int]]]) -> None:
         if not trajectory_list:
             print("No trajectory to plot.")
@@ -63,7 +64,7 @@ def main(video_path: Path, csv_path: Path) -> int:
 
     # Shot-change detection consumes the capture; rewind before running ECC/RANSAC.
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-    list_of_warp_matrices: list[EccResult] = affineTransform.detect_ecc_motion_sequence(cap, provider)
+    list_of_warp_matrices: list[EccResult] = affineTransform.detect_ecc_motion_sequence(cap, provider, WARP_MODE)
     refFrame=0
     endFrame=int(cap.get(cv2.CAP_PROP_FRAME_COUNT))-1
     trajectory_list: list[list[tuple[float,float,float]]] = []

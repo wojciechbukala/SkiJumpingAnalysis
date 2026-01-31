@@ -148,7 +148,7 @@ def find_right_transform(
                 refineIters=10
             )
         else:
-            A, inliers = cv2.estimateAffinePartial2D(
+            A, inliers = cv2.findHomography(
                 pts1, pts2,
                 method=cv2.RANSAC,
                 ransacReprojThreshold=ransac_reproj_th,
@@ -181,8 +181,9 @@ def find_right_transform(
 # Returns a list of EccResult objects.
 def detect_ecc_motion_sequence(
     cap,
-    provider: Masking.JumperProvider
-) -> list[EccResult]:
+    provider: Masking.JumperProvider,
+    warp_mode: int = cv2.MOTION_AFFINE,
+    ) -> list[EccResult]:
     generatorFrame = iter_frames(cap)
 
     try:
@@ -196,7 +197,8 @@ def detect_ecc_motion_sequence(
                 prev_idx,
                 prev,
                 curr,
-                provider
+                provider,
+                warp_mode=warp_mode,
             )
             results.append(EccResult(
                 prev_idx=prev_idx,
