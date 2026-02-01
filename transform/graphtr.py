@@ -6,7 +6,7 @@ from scipy.sparse.linalg import lsqr
 
 
 @dataclass
-# w is a transformation matrix from frame_i to frame_j (curr to prev) weighted by confidence weight
+# warp_matrix maps frame_i (newer) -> frame_j (older) weighted by confidence
 class Edge:
     frame_i_index: int
     frame_j_index: int
@@ -41,28 +41,28 @@ def create_graph(frames:int,edges: list[Edge],ref_frame: int =0,gauge_weight:flo
         j = edge.frame_j_index
         w = edge.warp_matrix
         inliers = max(0.0, float(edge.weight))
-        weight = np.log1p(inliers) / np.log1p(max_inliers)   # sempre in (0,1]
+        weight = np.log1p(inliers) / np.log1p(max_inliers)   # always in (0,1]
         weight = float(np.clip(weight, 1e-6, 1.0))
         sqrt_weight = np.sqrt(weight)
 
         # set the variables for transformation matrix coefficients for easy access
-        Acoef,Bcoef,Ccoef,Dcoef,Tx,Ty = w[0,0],w[0,1],w[0,2],w[1,0],w[1,1],w[1,2]
+        Acoef,Bcoef,Ccoef,Dcoef,Tx,Ty = w[0,0],w[0,1],w[1,0],w[1,1],w[0,2],w[1,2]
         #index to fill in A, it is 6 rows per frame
         iidx = 6 * i
         jidx = 6 * j
-        # constrangt: H_j = H_i * W_ij
+        # constraint: H_i = H_j * W_ij
         #
-        # H_i*W = [[a_i*A + b_i*C,  a_i*B + b_i*D,  a_i*Tx + b_i*Ty + tx_i],
-        #          [c_i*A + d_i*C,  c_i*B + d_i*D,  c_i*Tx + d_i*Ty + ty_i]]
+        # H_j*W = [[a_j*A + b_j*C,  a_j*B + b_j*D,  a_j*Tx + b_j*Ty + tx_j],
+        #          [c_j*A + d_j*C,  c_j*B + d_j*D,  c_j*Tx + d_j*Ty + ty_j]]
         #
-        # = [[a_j, b_j, tx_j],
-        #    [c_j, d_j, ty_j]]
+        # = [[a_i, b_i, tx_i],
+        #    [c_i, d_i, ty_i]]
         # Fill in the equations for frame i and j
-        # a_i - A*a_j - C*d_j = 0
+        # a_i - A*a_j - C*b_j = 0
         A.add(row + 0, iidx + 0, sqrt_weight)
         A.add(row + 0, jidx + 0, -sqrt_weight * Acoef)
         A.add(row + 0, jidx + 1, -sqrt_weight * Ccoef)
-        # b_i - B*a_j - D*d_j = 0
+        # b_i - B*a_j - D*b_j = 0
         A.add(row + 1, iidx + 1, sqrt_weight)
         A.add(row + 1, jidx + 0, -sqrt_weight * Bcoef)
         A.add(row + 1, jidx + 1, -sqrt_weight * Dcoef)
@@ -74,7 +74,7 @@ def create_graph(frames:int,edges: list[Edge],ref_frame: int =0,gauge_weight:flo
         A.add(row + 3, iidx + 3, sqrt_weight)
         A.add(row + 3, jidx + 2, -sqrt_weight * Bcoef)
         A.add(row + 3, jidx + 3, -sqrt_weight * Dcoef)
-        # tx_i - tx_j - Tx*a_j - Tx*b_j =0    
+        # tx_i - tx_j - Tx*a_j - Ty*b_j =0
         A.add(row+4,iidx + 4, sqrt_weight)
         A.add(row+4,jidx + 4, -sqrt_weight)
         A.add(row+4,jidx + 0, -sqrt_weight * Tx)
@@ -87,11 +87,12 @@ def create_graph(frames:int,edges: list[Edge],ref_frame: int =0,gauge_weight:flo
 
         row += 6
 
-        # gauge fix : X_ref=identity
-    refFrameTrasf= np.eye(3,3,1)
+    # gauge fix: H_ref = identity
     rr = 6*ref_frame
-    for k in range(6):
+    target = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    for k, val in enumerate(target):
         A.add(row,rr+k,gauge_weight)
+        b[row, 0] = gauge_weight * val
         row+=1
     B= coo_matrix((A.data,(A.rows,A.cols)),shape=(n_equations,n_unknowns),dtype=np.float64).tocsr()
     return B,b
@@ -120,9 +121,4 @@ def solve_graph(
             np.array([[a, b, tx], [c, d, ty], [0.0, 0.0, 1.0]], dtype=np.float64)
         )
 
-    X: List[Edge] = []
-    for i in range(1, frames):
-        X.append(
-+           H
-        )
-    return X
+    return H

@@ -28,9 +28,10 @@ def iter_frames(cap, sample_rate: int = DEFAULT_SAMPLE_RATE) -> Iterable[Tuple[i
             yield frame_idx, frame
         frame_idx += 1
 
-# evaluate ECC between two frames, return the transformation that aligns im2 to im1
+# evaluate ECC between two frames, return the transformation that aligns im2 to im1 (newer -> older)
 def ecc_2frame(
     prev_idx: int,
+    curr_idx: int,
     im1: np.ndarray,
     im2: np.ndarray,
     provider: Masking.JumperProvider,
@@ -45,7 +46,7 @@ def ecc_2frame(
     # Define termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,number_of_iterations,  termination_eps)
     mask1= Masking.create_mask(im1.shape, provider, prev_idx)
-    mask2= Masking.create_mask(im2.shape, provider, prev_idx+1)
+    mask2= Masking.create_mask(im2.shape, provider, curr_idx)
     # Combine masks with bitwise AND
     mask = cv2.bitwise_and(mask1, mask2)
     # Initialize warp_matrix before calling the transform finder
@@ -130,10 +131,10 @@ def find_right_transform(
         pts1 = np.float32([kp1[m.queryIdx].pt for m in good])
         pts2 = np.float32([kp2[m.trainIdx].pt for m in good])
 
-        # Estimate affine (or Euclidean) with RANSAC given the two point sets that are in correspondence
+        # Estimate affine (or homography) mapping im2 -> im1 (newer -> older)
         if warp_mode == cv2.MOTION_AFFINE:
             A, inliers = cv2.estimateAffine2D(
-                pts1, pts2,
+                pts2, pts1,
                 method=cv2.RANSAC,
                 ransacReprojThreshold=ransac_reproj_th,
                 maxIters=2000,
@@ -142,7 +143,7 @@ def find_right_transform(
             )
         else:
             A, inliers = cv2.findHomography(
-                pts1, pts2,
+                pts2, pts1,
                 method=cv2.RANSAC,
                 ransacReprojThreshold=ransac_reproj_th,
                 maxIters=2000,
@@ -171,10 +172,10 @@ def find_right_transform(
 
 
 # Detect RANSAC/ECC motion over a sequence of frames from the video capture.
-# Returns a list of EccResult objects.
+# Returns a list of Edge objects.
 # Produces multiple constraints:
-# short edge: (prev, curr)  (consecutive frames)
-# long  edge: (old, curr)  (lookback frames)
+# short edge: (curr, prev)  (consecutive frames)
+# long  edge: (curr, old)  (lookback frames)
 def detect_motion_sequence(
     cap,
     provider: "Masking.JumperProvider",
@@ -195,18 +196,19 @@ def detect_motion_sequence(
     history = deque([(prev_idx, prev)], maxlen=max(2, lookback + 1))
 
     for curr_idx, curr in frame_iter:
-        # short edge prev curr
+        # short edge curr -> prev
         try:
             cc, warp_matrix = ecc_2frame(
                 prev_idx,
+                curr_idx,
                 prev,
                 curr,
                 provider,
                 warp_mode=warp_mode,
             )
             results.append(Edge(
-                frame_i_index=prev_idx,
-                frame_j_index=curr_idx,
+                frame_i_index=curr_idx,
+                frame_j_index=prev_idx,
                 warp_matrix=warp_matrix,
                 weight=cc,
             ))
@@ -216,7 +218,7 @@ def detect_motion_sequence(
         # Update history AFTER processing short edge
         history.append((curr_idx, curr))
 
-        # long edge oldest curr (only when buffer is full)
+        # long edge curr -> oldest (only when buffer is full)
         if lookback > 0 and len(history) == history.maxlen:
             old_idx, old = history[0]
 
@@ -225,14 +227,15 @@ def detect_motion_sequence(
                 try:
                     cc2, warp_matrix2 = ecc_2frame(
                         old_idx,
+                        curr_idx,
                         old,
                         curr,
                         provider,
                         warp_mode=warp_mode,
                     )
                     results.append(Edge(
-                        frame_i_index=old_idx,
-                        frame_j_index=curr_idx,
+                        frame_i_index=curr_idx,
+                        frame_j_index=old_idx,
                         warp_matrix=warp_matrix2,
                         weight=cc2,
                     ))
@@ -255,15 +258,13 @@ def compute_ecc_impr(
     valid_mask: np.ndarray,
     blur_ksize: int = 5,
 ) -> float:
-    """
-    ecc_impr = (E_id - E_ecc) / E_id
-    dove E_id  = mean(|prev - cur|) sui pixel validi
-          E_ecc = mean(|warp(prev) - cur|) sui pixel validi
-
-    prev_gray, cur_gray: immagini grayscale uint8 (HxW)
-    warp_matrix: 2x3 affine stimata da ECC (o 3x3 se usi omografia: in quel caso va adattato a warpPerspective)
-    valid_mask: uint8 (HxW), 255=valido, 0=invalid
-    """
+    # ecc_impr = (E_id - E_ecc) / E_id
+    # where E_id  = mean(|prev - cur|) on valid pixels
+    #       E_ecc = mean(|prev - warp(cur)|) on valid pixels
+    #
+    # prev_gray, cur_gray: grayscale uint8 (HxW)
+    # warp_matrix: 2x3 affine mapping newer -> older (cur -> prev)
+    # valid_mask: uint8 (HxW), 255=valid, 0=invalid
     if prev_gray.ndim != 2 or cur_gray.ndim != 2:
         raise ValueError("prev_gray and cur_gray must be grayscale (HxW)")
 
@@ -274,7 +275,7 @@ def compute_ecc_impr(
     if int(m.sum()) == 0:
         return float("nan")
 
-    # ksize deve essere dispari e >0
+    # ksize must be odd and > 0
     k = int(blur_ksize)
     if k < 1:
         k = 1
@@ -284,7 +285,7 @@ def compute_ecc_impr(
     prev_b = cv2.GaussianBlur(prev_gray, (k, k), 0)
     cur_b  = cv2.GaussianBlur(cur_gray,  (k, k), 0)
 
-    # Errore con identity
+    # Error with identity
     diff_id = np.abs(prev_b.astype(np.int16) - cur_b.astype(np.int16))
     E_id = float(diff_id[m].mean())
 
@@ -293,17 +294,17 @@ def compute_ecc_impr(
 
     H, W = cur_gray.shape[:2]
 
-    # Applica warp al prev
+    # Apply warp to current (newer) image
     if warp_matrix.shape == (2, 3):
-        prev_w = cv2.warpAffine(
-            prev_b, warp_matrix, (W, H),
+        cur_w = cv2.warpAffine(
+            cur_b, warp_matrix, (W, H),
             flags=cv2.INTER_LINEAR,
             borderMode=cv2.BORDER_REPLICATE
         )
     else:
         raise ValueError("warp_matrix must be 2x3 affine for this function")
 
-    diff_e = np.abs(prev_w.astype(np.int16) - cur_b.astype(np.int16))
+    diff_e = np.abs(prev_b.astype(np.int16) - cur_w.astype(np.int16))
     E_ecc = float(diff_e[m].mean())
 
     if not np.isfinite(E_ecc):

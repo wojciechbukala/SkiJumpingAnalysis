@@ -2,8 +2,6 @@ import numpy as np
 import cv2
 from transform.graphtr import Edge
 from Mask import Masking
-
-USE_GRAPH=True
 def find_jumper_point(bbox: np.ndarray) -> tuple[int, int]:
     """
     Given a bounding box [x1, y1, x2, y2], return the center point (x, y).
@@ -66,38 +64,36 @@ def find_jumper_point(bbox: np.ndarray) -> tuple[int, int]:
 #     return trajectory
 
 def compute_trajectory(
-    transformations: list[np.ndarray],
+    transformations: list[np.ndarray] | list[Edge],
     ref_frame: int,
     stop_frame: int,
     provider: Masking.JumperProvider,
 ) -> list[tuple[float, float,float]]:
-    #C_t is the cumulative transformation matrix
-    # transformations[i].warp_matrix (from findTransformECC(template=prev, input=curr))
-    # maps coordinates from prev to curr.
-    # To express points of the current frame in the reference frame coordinates we
-    # must apply the inverse transforms cumulatively.
-
-    warp_by_pair: dict[tuple[int, int], np.ndarray] = {
-        (r.frame_i_index, r.frame_j_index): r.warp_matrix for r in transformations
-    }
+    # C_t is the cumulative transformation matrix
+    # edge warp_matrix maps newer -> older
 
     # C maps current-frame coordinates -> ref-frame coordinates.
     C = np.eye(3, dtype=np.float64)
     trajectory: list[tuple[float,float,float]] = []
 
+    use_edges = len(transformations) > 0 and isinstance(transformations[0], Edge)
+    if use_edges:
+        warp_by_pair: dict[tuple[int, int], np.ndarray] = {
+            (r.frame_i_index, r.frame_j_index): r.warp_matrix for r in transformations
+        }
+
     for frame in range(ref_frame, stop_frame):
         # Update cumulative mapping for this frame (relative to ref_frame).
-        if(USE_GRAPH==False):
+        if use_edges:
             if frame > ref_frame:
-                W = warp_by_pair.get((frame - 1, frame))
+                W = warp_by_pair.get((frame, frame - 1))
                 if W is not None:
-                    try:
-                        C = C @ np.linalg.inv(W)
-                    except np.linalg.LinAlgError:
-                        # Degenerate transform; keep previous C.
-                        pass
+                    C = C @ W
         else:
-            C=transformations[frame]
+            local_idx = frame - ref_frame
+            if local_idx < 0 or local_idx >= len(transformations):
+                continue
+            C = transformations[local_idx]
 
         point = provider.get_point(frame)
         if point is None:

@@ -3,3 +3,4 @@ videos/**
 !videos/.gitkeep
 metrics/**
 detectionOutputs/**
+outputPlot/
