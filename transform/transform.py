@@ -1,23 +1,16 @@
 # Import the packages
 from collections.abc import Iterable
-from dataclasses import dataclass
 from typing import List,Tuple
 from Mask import Masking
 import cv2
 import numpy as np
+from transform.graphtr import Edge
+from collections import deque
 
 DEFAULT_SAMPLE_RATE = 1
 # Global switch: "ecc" use ECC for all frames
 # anything else use SIFT + RANSAC for all frames
 GLOBAL_VAR = "ransac"
-
-@dataclass
-class EccResult:
-    prev_idx: int
-    curr_idx: int
-    warp_matrix: np.ndarray          # 2x3 (AFFINE) or 3x3 (HOMOGRAPHY)
-    correlation_coefficient: float
-
 # Yield frames from the video capture at a specified sample rate.
 # frames are converted to grayscale for ECC processing.
 def iter_frames(cap, sample_rate: int = DEFAULT_SAMPLE_RATE) -> Iterable[Tuple[int, "cv2.Mat"]]:
@@ -177,42 +170,79 @@ def find_right_transform(
         
 
 
-# Detect ECC motion over a sequence of frames from the video capture.
+# Detect RANSAC/ECC motion over a sequence of frames from the video capture.
 # Returns a list of EccResult objects.
-def detect_ecc_motion_sequence(
+# Produces multiple constraints:
+# short edge: (prev, curr)  (consecutive frames)
+# long  edge: (old, curr)  (lookback frames)
+def detect_motion_sequence(
     cap,
-    provider: Masking.JumperProvider,
+    provider: "Masking.JumperProvider",
     warp_mode: int = cv2.MOTION_AFFINE,
-    ) -> list[EccResult]:
-    generatorFrame = iter_frames(cap)
+    lookback: int = 3,  # "long edge" every time we have lookback+1 frames in memory
+) -> List["Edge"]:
+
+    frame_iter = iter_frames(cap)
 
     try:
-        prev_idx, prev = next(generatorFrame)
+        prev_idx, prev = next(frame_iter)
     except StopIteration:
         return []
-    results: List[EccResult] = []
-    for curr_idx, curr in generatorFrame:
+
+    results: List["Edge"] = []
+
+    # Keep at most (lookback + 1) frames: oldest will be lookback frames behind current
+    history = deque([(prev_idx, prev)], maxlen=max(2, lookback + 1))
+
+    for curr_idx, curr in frame_iter:
+        # short edge prev curr
         try:
-            cc,warp_matrix = ecc_2frame(
+            cc, warp_matrix = ecc_2frame(
                 prev_idx,
                 prev,
                 curr,
                 provider,
                 warp_mode=warp_mode,
             )
-            results.append(EccResult(
-                prev_idx=prev_idx,
-                curr_idx=curr_idx,
+            results.append(Edge(
+                frame_i_index=prev_idx,
+                frame_j_index=curr_idx,
                 warp_matrix=warp_matrix,
-                correlation_coefficient=cc,
+                weight=cc,
             ))
         except cv2.error as e:
-            print(f"ECC alignment failed between frames {prev_idx} and {curr_idx}: {e}")
-            # Skip this pair and continue
-            pass
-        prev_idx, prev = curr_idx, curr
-    return results
+            print(f"ECC alignment failed (short) between {prev_idx} and {curr_idx}: {e}")
 
+        # Update history AFTER processing short edge
+        history.append((curr_idx, curr))
+
+        # long edge oldest curr (only when buffer is full)
+        if lookback > 0 and len(history) == history.maxlen:
+            old_idx, old = history[0]
+
+            # avoid duplicating the short edge when lookback==1
+            if old_idx != prev_idx:
+                try:
+                    cc2, warp_matrix2 = ecc_2frame(
+                        old_idx,
+                        old,
+                        curr,
+                        provider,
+                        warp_mode=warp_mode,
+                    )
+                    results.append(Edge(
+                        frame_i_index=old_idx,
+                        frame_j_index=curr_idx,
+                        warp_matrix=warp_matrix2,
+                        weight=cc2,
+                    ))
+                except cv2.error as e:
+                    print(f"ECC alignment failed (long) between {old_idx} and {curr_idx}: {e}")
+
+        # Advance
+        prev_idx, prev = curr_idx, curr
+
+    return results
 
 
 #-----------------------------------------------------------------------------

@@ -1,13 +1,12 @@
 from dataclasses import dataclass
 import numpy as np
-import scipy.sparse
 from scipy.sparse import csr_matrix,coo_matrix
 from typing import Tuple,List
 from scipy.sparse.linalg import lsqr
 
 
 @dataclass
-# w is a transformation matrix from frame_j to frame_i weighted by confidence weight
+# w is a transformation matrix from frame_i to frame_j (curr to prev) weighted by confidence weight
 class Edge:
     frame_i_index: int
     frame_j_index: int
@@ -17,7 +16,7 @@ class Edge:
 class GraphMatrix:
     rows: list[int]
     cols: list[int]
-    data: float
+    data: list[float]
     def add(self, row: int, col: int, value: float) -> None:
         self.rows.append(row)
         self.cols.append(col)
@@ -25,21 +24,27 @@ class GraphMatrix:
 
 
 # number of frames is total number of nodes
-def create_graph(frames,edges: list[Edge],ref_frame: int =0,gauge_weight:float=1e3) -> Tuple[csr_matrix, np.ndarray]:
+def create_graph(frames:int,edges: list[Edge],ref_frame: int =0,gauge_weight:float=1e3) -> Tuple[csr_matrix, np.ndarray]:
     n_equations = 6 * len(edges) + 6  # 6 equations per edge + 6 for ref frame
-    n_unknowns= 6*len(frames)
+    n_unknowns= 6*frames
     # use sparse matrix for efficiency
     A = GraphMatrix(rows=[], cols=[], data=[])
     
 
     b = np.zeros((n_equations, 1),dtype=float)  # 6N x 1 vector fill with 0
     row = 0
+    max_inliers = max((float(e.weight) for e in edges), default=1.0)
+    max_inliers = max(max_inliers, 1.0)
+
     for edge in edges:
         i = edge.frame_i_index
         j = edge.frame_j_index
         w = edge.warp_matrix
-        weight = float(np.clip(edge.weight, 1e-12, 1.0))
+        inliers = max(0.0, float(edge.weight))
+        weight = np.log1p(inliers) / np.log1p(max_inliers)   # sempre in (0,1]
+        weight = float(np.clip(weight, 1e-6, 1.0))
         sqrt_weight = np.sqrt(weight)
+
         # set the variables for transformation matrix coefficients for easy access
         Acoef,Bcoef,Ccoef,Dcoef,Tx,Ty = w[0,0],w[0,1],w[0,2],w[1,0],w[1,1],w[1,2]
         #index to fill in A, it is 6 rows per frame
@@ -97,13 +102,27 @@ def solve(A: csr_matrix,b: np.ndarray) -> np.ndarray:
     return x
     
 
-def solve_graph(frames:int,edges:List[Edge],ref:int =0) ->List[np.ndarray]:
-    A,bb=create_graph(frames,edges,ref)
-    x=solve(A,bb)
-    paramiters= x.reshape(frames,6)
-    X: List[np.ndarray]=[]
-    for i in range (frames):
-        a,b,tx,c,d,ty=paramiters[i]
-        Xi=np.ndarray([[a,b,tx],[c,d,ty],[0.,0.,1.]],dtype=np.float64)
-        X.append(Xi)
+def solve_graph(
+    frames: int,
+    edges: List[Edge],
+    ref: int = 0,
+    index_offset: int = 0,
+) -> List[np.ndarray]:
+    A, bb = create_graph(frames, edges, ref)
+    x = solve(A, bb)
+    params = x.reshape(frames, 6)
+
+    # H_i maps frame i -> reference frame.
+    H: List[np.ndarray] = []
+    for i in range(frames):
+        a, b, c, d, tx, ty = params[i]
+        H.append(
+            np.array([[a, b, tx], [c, d, ty], [0.0, 0.0, 1.0]], dtype=np.float64)
+        )
+
+    X: List[Edge] = []
+    for i in range(1, frames):
+        X.append(
++           H
+        )
     return X

@@ -44,17 +44,17 @@ def create_mask(
     if skier_bbox is not None:
         arr = np.asarray(skier_bbox, dtype=np.float32)
         if arr.size >= 4 and np.all(np.isfinite(arr[:4])):
-            skier_bbox = arr[:4]
-        else:
-            skier_bbox = None
+            x1, y1, x2, y2 = arr[:4]
+            x1, x2 = sorted((int(x1), int(x2)))
+            y1, y2 = sorted((int(y1), int(y2)))
 
-    if skier_bbox is not None:
-        x1, y1, x2, y2 = map(int, skier_bbox)
-        x1 = max(x1 - margin, 0)
-        y1 = max(y1 - margin, 0)
-        x2 = min(x2 + margin, width)
-        y2 = min(y2 + margin, height)
-        mask[y1:y2, x1:x2] = 0
+            x1 = max(x1 - margin, 0)
+            y1 = max(y1 - margin, 0)
+            x2 = min(x2 + margin, width)
+            y2 = min(y2 + margin, height)
+
+            if x2 > x1 and y2 > y1:
+                mask[y1:y2, x1:x2] = 0
 
     # Mask out any overlay rectangles (x1, y1, x2, y2).
     # put a 0 where there are overlay rectangles

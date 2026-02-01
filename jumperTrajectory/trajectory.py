@@ -1,9 +1,9 @@
 import numpy as np
 import cv2
-from transform.transform import EccResult
+from transform.graphtr import Edge
 from Mask import Masking
 
-
+USE_GRAPH=True
 def find_jumper_point(bbox: np.ndarray) -> tuple[int, int]:
     """
     Given a bounding box [x1, y1, x2, y2], return the center point (x, y).
@@ -15,7 +15,7 @@ def find_jumper_point(bbox: np.ndarray) -> tuple[int, int]:
 
 
 # def compute_trajectory(
-#     ecc_results: list[EccResult],
+#     transformations: list[EccResult],
 #     ref_frame: int,
 #     stop_frame: int,
 # ) -> list[tuple[float, float,float]]:
@@ -24,13 +24,13 @@ def find_jumper_point(bbox: np.ndarray) -> tuple[int, int]:
 #     of the jumper as a list of (x, y) points.
 #     """
 #     #C_t is the cumulative transformation matrix
-#     # ecc_results[i].warp_matrix (from findTransformECC(template=prev, input=curr))
+#     # transformations[i].warp_matrix (from findTransformECC(template=prev, input=curr))
 #     # maps coordinates from prev to curr.
 #     # To express points of the current frame in the reference frame coordinates we
 #     # must apply the inverse transforms cumulatively.
 
 #     warp_by_pair: dict[tuple[int, int], np.ndarray] = {
-#         (r.prev_idx, r.curr_idx): r.warp_matrix for r in ecc_results
+#         (r.prev_idx, r.curr_idx): r.warp_matrix for r in transformations
 #     }
 
 #     # C maps current-frame coordinates -> ref-frame coordinates.
@@ -66,23 +66,19 @@ def find_jumper_point(bbox: np.ndarray) -> tuple[int, int]:
 #     return trajectory
 
 def compute_trajectory(
-    ecc_results: list[EccResult],
+    transformations: list[np.ndarray],
     ref_frame: int,
     stop_frame: int,
     provider: Masking.JumperProvider,
 ) -> list[tuple[float, float,float]]:
-    """
-    Given a list of ECC results, compute the trajectory
-    of the jumper as a list of (x, y) points.
-    """
     #C_t is the cumulative transformation matrix
-    # ecc_results[i].warp_matrix (from findTransformECC(template=prev, input=curr))
+    # transformations[i].warp_matrix (from findTransformECC(template=prev, input=curr))
     # maps coordinates from prev to curr.
     # To express points of the current frame in the reference frame coordinates we
     # must apply the inverse transforms cumulatively.
 
     warp_by_pair: dict[tuple[int, int], np.ndarray] = {
-        (r.prev_idx, r.curr_idx): r.warp_matrix for r in ecc_results
+        (r.frame_i_index, r.frame_j_index): r.warp_matrix for r in transformations
     }
 
     # C maps current-frame coordinates -> ref-frame coordinates.
@@ -91,14 +87,17 @@ def compute_trajectory(
 
     for frame in range(ref_frame, stop_frame):
         # Update cumulative mapping for this frame (relative to ref_frame).
-        if frame > ref_frame:
-            W = warp_by_pair.get((frame - 1, frame))
-            if W is not None:
-                try:
-                    C = C @ np.linalg.inv(W)
-                except np.linalg.LinAlgError:
-                    # Degenerate transform; keep previous C.
-                    pass
+        if(USE_GRAPH==False):
+            if frame > ref_frame:
+                W = warp_by_pair.get((frame - 1, frame))
+                if W is not None:
+                    try:
+                        C = C @ np.linalg.inv(W)
+                    except np.linalg.LinAlgError:
+                        # Degenerate transform; keep previous C.
+                        pass
+        else:
+            C=transformations[frame]
 
         point = provider.get_point(frame)
         if point is None:
