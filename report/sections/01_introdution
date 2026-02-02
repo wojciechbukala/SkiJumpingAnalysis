@@ -1,0 +1,9 @@
+Ski jumping is a competitive winter sport where aerodynamic performance, take-off dynamics, and in-flight posture determine the length and safety of each jump.
+Accurate reconstruction of a jumper's trajectory is essential for performance analysis, coaching feedback, and injury prevention. 
+This project focuses on developing a robust pipeline to reconstruct two-dimensional trajectories of ski jumpers using only avaible online video recordings.
+
+The main objectives are: to design and implement algorithms for precise spatiotemporal tracking of the athlete during in-run, take-off, flight and landing phases;
+ Methodologically, the project explores camera calibration(not for now), multi-view geometry, pose estimation, filtering techniques (e.g. Kalman or particle filters), and optimization-based smoothing.
+
+Expected outcomes include a reproducible implementation for trajectory reconstruction, quantitative performance metrics (accuracy, latency, robustness), and guidelines for practical deployment in training environments. 
+The remainder of the report describes related work, the chosen methods and system design, experimental results, and conclusions with future directions.

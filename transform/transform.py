@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from transform.graphtr import Edge
 from collections import deque
-
+LOOKBACK = 4  # "long edge" every time we have lookback+1 frames in memory
 DEFAULT_SAMPLE_RATE = 1
 # Global switch: "ecc" use ECC for all frames
 # anything else use SIFT + RANSAC for all frames
@@ -180,7 +180,7 @@ def detect_motion_sequence(
     cap,
     provider: "Masking.JumperProvider",
     warp_mode: int = cv2.MOTION_AFFINE,
-    lookback: int = 3,  # "long edge" every time we have lookback+1 frames in memory
+  
 ) -> List["Edge"]:
 
     frame_iter = iter_frames(cap)
@@ -193,7 +193,7 @@ def detect_motion_sequence(
     results: List["Edge"] = []
 
     # Keep at most (lookback + 1) frames: oldest will be lookback frames behind current
-    history = deque([(prev_idx, prev)], maxlen=max(2, lookback + 1))
+    history = deque([(prev_idx, prev)], maxlen=max(2, LOOKBACK + 1))
 
     for curr_idx, curr in frame_iter:
         # short edge curr -> prev
@@ -219,7 +219,7 @@ def detect_motion_sequence(
         history.append((curr_idx, curr))
 
         # long edge curr -> oldest (only when buffer is full)
-        if lookback > 0 and len(history) == history.maxlen:
+        if LOOKBACK > 0 and len(history) == history.maxlen:
             old_idx, old = history[0]
 
             # avoid duplicating the short edge when lookback==1

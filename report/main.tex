@@ -1,0 +1,147 @@
+\documentclass[11pt,a4paper]{report}
+
+% ----------------------------
+% ENCODING + LANGUAGE
+% ----------------------------
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc} % se compili con pdflatex
+\usepackage[english]{babel}
+
+% ----------------------------
+% PAGE LAYOUT
+% ----------------------------
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{microtype}
+
+% ----------------------------
+% MATH
+% ----------------------------
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{mathtools}
+\usepackage{bm}            % bold math
+\usepackage{physics}       % comodo per \norm{}, \abs{}, ecc. (se ti piace)
+\usepackage{siunitx}       % unità e numeri
+\sisetup{detect-all}
+
+% ----------------------------
+% FIGURES + TABLES
+% ----------------------------
+\usepackage{graphicx}
+\usepackage{float}         % [H]
+\usepackage{subcaption}    % subfigure
+\usepackage{caption}
+\usepackage{booktabs}      % tabelle belle
+\usepackage{multirow}      % (utile: ti evita l'errore \multirow undefined)
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{adjustbox}     % resize tabelle/figure se serve
+
+\graphicspath{{figures/}}
+
+% ----------------------------
+% LISTS + LINKS + REFERENCES
+% ----------------------------
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue,
+  citecolor=blue,
+  urlcolor=blue
+}
+\usepackage[nameinlink,capitalise]{cleveref}
+
+% ----------------------------
+% ALGORITHMS + CODE (OPZIONALI)
+% ----------------------------
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% listings:
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  numbers=left,
+  numberstyle=\tiny,
+  tabsize=2
+}
+
+% ----------------------------
+% HEADERS/FOOTERS (stile “report” pulito)
+% ----------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{IACV Homework}
+\fancyhead[R]{\leftmark}
+\fancyfoot[C]{\thepage}
+\setlength{\headheight}{13.6pt}
+\addtolength{\topmargin}{-1.6pt}
+
+
+% ----------------------------
+% BIBLIOGRAPHY (scegli UNA delle due strade)
+% ----------------------------
+% (A) biblatex (consigliato se usi biber)
+\usepackage[backend=biber,style=ieee]{biblatex}
+\addbibresource{bib/references.bib}
+
+% (B) natbib (se preferisci bibtex)
+% \usepackage[numbers]{natbib}
+
+% ----------------------------
+% MACROS UTILI
+% ----------------------------
+\newcommand{\Hmat}{\mathbf{H}}
+\newcommand{\Kmat}{\mathbf{K}}
+\newcommand{\x}{\mathbf{x}}
+\newcommand{\X}{\mathbf{X}}
+\newcommand{\linf}{\ell_{\infty}}
+\newcommand{\vvan}{\mathbf{v}}
+
+\begin{document}
+
+% ----------------------------
+% TITLE PAGE (stile simile all'esempio)
+% ----------------------------
+\begin{titlepage}
+  \centering
+  {\Large Skijumping analisys\par}
+  \vspace{0.5cm}
+  {\LARGE eofbweoubfwoe\par}
+  \vspace{1.0cm}
+  {\large Edoardo Tedesco,Daniele Spini,Wojciech Bukala\par}
+  \vspace{0.2cm}
+  {\large Politecnico di Milano\par}
+  \vspace{0.2cm}
+  {\large A.Y. 2025/2026\par}
+  \vfill
+  {\large \today\par}
+\end{titlepage}
+
+\tableofcontents
+\clearpage
+
+% ----------------------------
+% sections (come nell’esempio_report: intro -> extraction -> theory -> impl -> results -> refs)
+% ----------------------------
+\chapter{Introduction}
+\input{sections/01_introduction}
+% ----------------------------
+% REFERENCES
+% ----------------------------
+\printbibliography
+% se usi natbib:
+% \bibliographystyle{ieeetr}
+% \bibliography{bib/references}
+
+\end{document}
