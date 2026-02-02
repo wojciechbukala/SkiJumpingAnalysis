@@ -93,12 +93,13 @@ def main(video_path: Path, csv_path: Path) -> int:
     list_of_warp_matrices: list[Edge] = affineTransform.detect_motion_sequence(cap, provider, WARP_MODE)
     refFrame=0
     endFrame=int(cap.get(cv2.CAP_PROP_FRAME_COUNT))-1
-    trajectory_list: list[list[tuple[float,float,float]]] = []
+    trajectory_list_graph: list[list[tuple[float,float,float]]] = []
+    trajectory_list_cum: list[list[tuple[float,float,float]]] = []
     for shot in range(len(changes)+1): 
         if shot < len(changes):
             stop_frame = changes[shot].frame_idx
         else:
-            stop_frame = endFrame
+            stop_frame = endFrame+1
 
         num_frame = stop_frame - refFrame
         if num_frame <= 0:
@@ -112,20 +113,24 @@ def main(video_path: Path, csv_path: Path) -> int:
             ref=0,
             index_offset=refFrame,
         )
-        trajectory_list.append(
+        trajectory_list_graph.append(
             tj.compute_trajectory(transformations, refFrame, stop_frame, provider)
+        )
+        trajectory_list_cum.append(
+            tj.compute_trajectory(seg_edges, refFrame, stop_frame, provider)
         )
 
         refFrame = stop_frame
 
     # Plot all collected trajectories
-    plot_trajectories_2d(trajectory_list, Path("outputPlot"))
+    plot_trajectories_2d(trajectory_list_graph, Path("outputPlot") / "graph")
+    plot_trajectories_2d(trajectory_list_cum, Path("outputPlot") / "cumulative")
     cap.release()
     return 0
 
 if __name__ == "__main__":
-    VIDEO_PATH = Path("detectionOutputs/G_20out.mp4")
-    CSV_PATH = Path("detectionOutputs/G_20trajectory.csv")
+    VIDEO_PATH = Path("detectionOutputs/O_20out.mp4")
+    CSV_PATH = Path("detectionOutputs/O_20trajectory.csv")
 
     raise SystemExit(main(VIDEO_PATH, CSV_PATH))
 

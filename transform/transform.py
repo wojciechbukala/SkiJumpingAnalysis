@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from transform.graphtr import Edge
 from collections import deque
-LOOKBACK = 4  # "long edge" every time we have lookback+1 frames in memory
+LOOKBACK = 0  # "long edge" every time we have lookback+1 frames in memory
 DEFAULT_SAMPLE_RATE = 1
 # Global switch: "ecc" use ECC for all frames
 # anything else use SIFT + RANSAC for all frames
@@ -133,7 +133,7 @@ def find_right_transform(
 
         # Estimate affine (or homography) mapping im2 -> im1 (newer -> older)
         if warp_mode == cv2.MOTION_AFFINE:
-            A, inliers = cv2.estimateAffine2D(
+            A, inliers = cv2.estimateAffinePartial2D(
                 pts2, pts1,
                 method=cv2.RANSAC,
                 ransacReprojThreshold=ransac_reproj_th,

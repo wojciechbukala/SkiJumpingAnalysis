@@ -63,51 +63,36 @@ def find_jumper_point(bbox: np.ndarray) -> tuple[int, int]:
 
 #     return trajectory
 
-def compute_trajectory(
-    transformations: list[np.ndarray] | list[Edge],
-    ref_frame: int,
-    stop_frame: int,
-    provider: Masking.JumperProvider,
-) -> list[tuple[float, float,float]]:
-    # C_t is the cumulative transformation matrix
-    # edge warp_matrix maps newer -> older
-
-    # C maps current-frame coordinates -> ref-frame coordinates.
+def compute_trajectory(transformations, ref_frame, stop_frame, provider):
     C = np.eye(3, dtype=np.float64)
-    trajectory: list[tuple[float,float,float]] = []
-
+    trajectory = []
+# check to see if compute the cumulative or use the graph if use_edges==True use cumulative
     use_edges = len(transformations) > 0 and isinstance(transformations[0], Edge)
     if use_edges:
-        warp_by_pair: dict[tuple[int, int], np.ndarray] = {
-            (r.frame_i_index, r.frame_j_index): r.warp_matrix for r in transformations
-        }
+        warp_by_pair = {(e.frame_i_index, e.frame_j_index): e.warp_matrix for e in transformations}
 
-    for frame in range(ref_frame, stop_frame):
-        # Update cumulative mapping for this frame (relative to ref_frame).
+    n = stop_frame - ref_frame
+    for k in range(n):
+        frame_global = ref_frame + k
+
         if use_edges:
-            if frame > ref_frame:
-                W = warp_by_pair.get((frame, frame - 1))
+            #cumulative
+            if k > 0:
+                #consider only transformation between consecutive frame
+                W = warp_by_pair.get((k, k - 1))
                 if W is not None:
                     C = C @ W
         else:
-            local_idx = frame - ref_frame
-            if local_idx < 0 or local_idx >= len(transformations):
-                continue
-            C = transformations[local_idx]
+            #graph
+            C = transformations[k]
 
-        point = provider.get_point(frame)
+        point = provider.get_point(frame_global)
         if point is None:
             continue
 
         x, y = point
-        pt = np.array([float(x), float(y), 1.0], dtype=np.float64)
+        pt = np.array([x, y, 1.0], dtype=np.float64)
         mapped = C @ pt
-        # Ignore points that map to infinity.
-        if mapped[2] == 0:
-            continue
-
-        x_m = mapped[0] / mapped[2]
-        y_m = mapped[1] / mapped[2]
-        trajectory.append(( x_m, y_m, 1.0))
+        trajectory.append((mapped[0] / mapped[2], mapped[1] / mapped[2], 1.0))
 
     return trajectory
