@@ -4,3 +4,5 @@ videos/**
 metrics/**
 detectionOutputs/**
 outputPlot/
+report/pdflatex/
+report/-p

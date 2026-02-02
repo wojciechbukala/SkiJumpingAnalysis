@@ -1,0 +1,76 @@
+
+We decomposed the problem of estimating the ski jumper’s trajectory into a sequence of well-defined sub-tasks,
+so that each component could be designed, tested, and improved independently.
+
+\medskip
+
+First, we performed per-frame detection of the athlete using YOLO.
+From the detected bounding box, we extracted a region of interest that isolates the jumper from the background
+and reduces the influence of irrelevant image content.
+
+\medskip
+
+Next, we applied SAM3 to obtain a pixel-level segmentation of the jumper.
+From this segmentation mask, we estimated the center of mass (CoM) of the athlete,
+which we used as the main measurement to represent the jumper position over time
+and to build an initial (raw) trajectory.
+
+\medskip
+
+In early experiments, the CoM estimates exhibited temporal jitter and occasional outliers,
+mainly due to segmentation noise, partial occlusions, and motion blur.
+To enforce temporal coherence and reduce instability, we introduced a Kalman filter.
+The filtered CoM sequence provides a smoother and more reliable observation stream,
+while still preserving the underlying dynamics of the motion.
+
+\medskip
+
+Since the input videos are multi-camera and include abrupt viewpoint changes,
+we explicitly detected camera switches to avoid mixing incompatible geometries.
+We used an HSV-based algorithm to identify frames where the color distribution changes sharply,
+which is a strong indicator of a cut.
+Using these detections, we split the full video into homogeneous segments (shots)
+in which the viewpoint is approximately consistent.
+
+\medskip
+
+For each shot, we selected as reference the first frame in which the jumper is visible.
+Starting from this reference, we performed synchronization-based image mosaicking
+to align frames and express all measurements in a common coordinate system.
+This step is crucial to compensate for camera motion and to compare the jumper position across time.
+
+\medskip
+
+We formulated the alignment problem as a graph optimization task.
+Each frame in the shot is represented as a node,
+and each edge encodes a planar affine transformations that maps one frame into another.
+At first, we experimented with a homography-based approach, 
+but it proved too unstable due to the lack of sufficient keypoints in each scene and the presence of significant motion blur. 
+Therefore, we decided to adopt an affine transformation instead.
+To increase robustness and mitigate drift, we did not rely only on consecutive correspondences:
+for each frame $x$, we estimated affine transformation both between $x$ and $x-1$
+and between $x$ and $x-4$.
+The longer-baseline edges help stabilize the solution when consecutive frames provide weak matches,
+for instance due to motion blur or limited texture.
+
+\medskip
+
+All estimated affine transformation were constrained through an explicit consistency condition,
+so that transformations remain compatible when composed along different paths in the graph.
+In practice, this enforces that multiple routes connecting the same pair of frames
+produce coherent mappings, reducing accumulated error and improving global alignment.
+
+\medskip
+
+The resulting system exhibits gauge freedom,
+meaning that without an additional constraint it admits multiple equivalent solutions
+(e.g., any global change of reference can produce the same relative affine transformation).
+To remove this ambiguity, we fixed the gauge by introducing a gauge weight
+that anchors the solution to a chosen reference and ensures uniqueness.
+
+\medskip
+
+Finally, we solved the resulting overdetermined system using least squares,
+obtaining the minimum-norm solution that best satisfies all pairwise homography constraints.
+Once the frames are globally aligned, the (filtered) CoM measurements can be consistently projected
+into the reference coordinate system, yielding the final trajectory for each shot.
