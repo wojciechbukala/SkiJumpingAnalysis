@@ -18,6 +18,7 @@
 \usepackage{setspace}
 \onehalfspacing
 \usepackage{microtype}
+\usepackage{parskip}
 
 % ----------------------------
 % MATH
@@ -110,23 +111,7 @@
 
 \begin{document}
 
-% ----------------------------
-% TITLE PAGE (stile simile all'esempio)
-% ----------------------------
-\begin{titlepage}
-  \centering
-  {\Large Skijumping analisys\par}
-  \vspace{0.5cm}
-  {\LARGE eofbweoubfwoe\par}
-  \vspace{1.0cm}
-  {\large Edoardo Tedesco,Daniele Spini,Wojciech Bukala\par}
-  \vspace{0.2cm}
-  {\large Politecnico di Milano\par}
-  \vspace{0.2cm}
-  {\large A.Y. 2025/2026\par}
-  \vfill
-  {\large \today\par}
-\end{titlepage}
+\input{sections/00_titlepage}
 
 \tableofcontents
 \clearpage
@@ -136,10 +121,18 @@
 % ----------------------------
 \chapter{Introduction}
 \input{sections/01_introduction}
-\chapter{Instruction and code design}
-\input{sections/02_Instruction_e_design}
-\chapter{algorithm design}
+
+\chapter{Solution}
+\input{sections/02_solution}
+
+\chapter{Algorithm design}
 \input{sections/03_algorithm_design}
+
+\chapter{Experiments}
+\input{sections/04_experimants}
+
+\chapter{Conclusion}
+\input{sections/05_conclusion}
 % ----------------------------
 % REFERENCES
 % ----------------------------
