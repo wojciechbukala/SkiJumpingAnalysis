@@ -18,7 +18,7 @@ SkiJumpingAnalysis - main skeleton
 
 File: main.py
 """
-__version__ = "0.0.4"
+__version__ = "0.0.5"
 # CHANGE HERE TO SET THE DESIRED MOTION MODEL !!!!!!!!!!!!!!!!!!!!!
 WARP_MODE = cv2.MOTION_AFFINE
 def plot_trajectories_2d(

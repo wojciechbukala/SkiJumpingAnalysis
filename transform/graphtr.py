@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 import numpy as np
 from scipy.sparse import csr_matrix,coo_matrix
-from typing import Tuple,List
 from scipy.sparse.linalg import lsqr
+from typing import Any, Dict, List, Tuple
 
 
 @dataclass
@@ -23,8 +23,49 @@ class GraphMatrix:
         self.data.append(value)
 
 
+# 
+def _mad(x: np.ndarray) -> float:
+    med = float(np.median(x))
+    return float(np.median(np.abs(x - med)))
+
+
+#
+def _build_H_from_params(params: np.ndarray) -> List[np.ndarray]:
+    H: List[np.ndarray] = []
+    for a, b, c, d, tx, ty in params:
+        H.append(np.array([[a, b, tx], [c, d, ty], [0.0, 0.0, 1.0]], dtype=np.float64))
+    return H
+
+def _edge_residual_vec(Hi: np.ndarray, Hj: np.ndarray, Wij: np.ndarray) -> np.ndarray:
+    # Residual of: Hi ≈ Hj @ Wij (compare only the 2x3 affine block)
+    pred = (Hj @ Wij)[:2, :]
+    diff = Hi[:2, :] - pred
+    return diff.reshape(-1)  # 6-vector
+
+
+
+"""
+    Build sparse system A x = b with constraints: H_i ≈ H_j W_ij and gauge fix H_ref = I.
+
+    Notes:
+    - We treat Edge.weight as a confidence already (often 0..1 from your RANSAC inlier ratio).
+    - We penalize long edges (dt>1) so they help as loops but don't dominate.
+    - We skip extremely weak long edges (better than adding almost-zero rows).
+"""
+
 # number of frames is total number of nodes
-def create_graph(frames:int,edges: list[Edge],ref_frame: int =0,gauge_weight:float=1e3) -> Tuple[csr_matrix, np.ndarray]:
+def create_graph(
+    frames:int,
+    edges: list[Edge],
+    ref_frame: int =0,
+    gauge_weight:float=1e3,
+    *,
+    long_alpha: float = 0.35,        # downweight long edges
+    long_dt_power: float = 1.0,      # additionally divide by (dt^power)
+    min_short_weight: float = 0.05,  # keep chain connectivity
+    min_long_weight: float = 0.0,    # usually 0, long edges can disappear
+    skip_long_below: float = 0.02,   # skip long edges that are too weak
+) -> Tuple[csr_matrix, np.ndarray]:
     n_equations = 6 * len(edges) + 6  # 6 equations per edge + 6 for ref frame
     n_unknowns= 6*frames
     # use sparse matrix for efficiency
@@ -40,10 +81,22 @@ def create_graph(frames:int,edges: list[Edge],ref_frame: int =0,gauge_weight:flo
         i = edge.frame_i_index
         j = edge.frame_j_index
         w = edge.warp_matrix
-        inliers = max(0.0, float(edge.weight))
-        weight = np.log1p(inliers) / np.log1p(max_inliers)   # always in (0,1]
-        weight = float(np.clip(weight, 1e-6, 1.0))
-        sqrt_weight = np.sqrt(weight)
+        dt = abs(i - j)
+        base_w = float(max(0.0, edge.weight))
+
+        if dt <= 1:
+            # short edge: keep a minimum weight so graph stays connected
+            w_eff = max(base_w, float(min_short_weight))
+        else:
+            # long edge: penalize
+            w_eff = base_w * float(long_alpha) / float(max(1.0, dt ** float(long_dt_power)))
+            w_eff = max(w_eff, float(min_long_weight))
+
+            # skip very weak long edges (prevents near-zero rows -> numeric issues)
+            if w_eff < float(skip_long_below):
+                continue
+
+        sqrt_weight = float(np.sqrt(max(w_eff, 0.0)))
 
         # set the variables for transformation matrix coefficients for easy access
         Acoef,Bcoef,Ccoef,Dcoef,Tx,Ty = w[0,0],w[0,1],w[1,0],w[1,1],w[0,2],w[1,2]
@@ -103,22 +156,144 @@ def solve(A: csr_matrix,b: np.ndarray) -> np.ndarray:
     return x
     
 
+
+
+
+def _robust_reweight_edges(
+    edges: List[Edge],
+    H: List[np.ndarray],
+    z_thresh: float = 3.5,
+    tukey: bool = True,
+    keep_short_floor: float = 0.15,  # keep short edges alive even if "outlier"
+) -> Tuple[List[Edge], Dict[str, Any]]:
+    """
+    Reweight edges based on global consistency:
+      residual r_e = Hi - Hj Wij  (2x3 block)
+    Robust score via MAD; Tukey biweight inside threshold.
+    """
+    if not edges:
+        return edges, {"n_outliers": 0, "n_edges": 0}
+
+    R = np.zeros((len(edges), 6), dtype=np.float64)
+    dt = np.zeros((len(edges),), dtype=np.int32)
+
+    for k, e in enumerate(edges):
+        i, j = int(e.frame_i_index), int(e.frame_j_index)
+        dt[k] = abs(i - j)
+        R[k, :] = _edge_residual_vec(H[i], H[j], e.warp_matrix)
+
+    # normalize affine vs translation so tx/ty don't dominate by scale
+    aff = R[:, :4]
+    tr  = R[:, 4:6]
+    s_aff = float(np.median(np.abs(aff))) + 1e-12
+    s_tr  = float(np.median(np.abs(tr)))  + 1e-12
+
+    N = np.sqrt(np.sum((aff / s_aff) ** 2, axis=1) + np.sum((tr / s_tr) ** 2, axis=1))
+
+    med = float(np.median(N))
+    mad = _mad(N) + 1e-12
+    z = 0.6745 * (N - med) / mad
+    az = np.abs(z)
+
+    out = az > float(z_thresh)
+    wrob = np.ones_like(az, dtype=np.float64)
+    wrob[out] = 0.0
+
+    if tukey:
+        inl = ~out
+        u = az[inl] / float(z_thresh)
+        wrob[inl] = (1.0 - u * u) ** 2
+
+    # keep short edges (dt==1) alive to preserve connectivity
+    short = (dt <= 1)
+    wrob[short] = np.maximum(wrob[short], float(keep_short_floor))
+
+    new_edges: List[Edge] = []
+    for e, wr in zip(edges, wrob):
+        new_edges.append(Edge(
+            frame_i_index=e.frame_i_index,
+            frame_j_index=e.frame_j_index,
+            warp_matrix=e.warp_matrix,
+            weight=float(max(0.0, e.weight) * float(wr)),
+        ))
+
+    info = {
+        "n_edges": int(len(edges)),
+        "n_outliers": int(np.sum(out)),
+        "median_norm": med,
+        "mad_norm": mad,
+        "mean_wrob": float(np.mean(wrob)),
+        "min_wrob": float(np.min(wrob)),
+    }
+    return new_edges, info
+
+    """
+    Returns H_i (3x3) mapping frame i -> reference frame.
+
+    robust=True enables a light IRLS:
+      solve -> reweight edges by residual -> solve again (few iters).
+    """
 def solve_graph(
     frames: int,
     edges: List[Edge],
     ref: int = 0,
-    index_offset: int = 0,
+    index_offset: int = 0,  # kept for compatibility (unused)
+    *,
+    robust: bool = True,
+    robust_iters: int = 3,
+    z_thresh: float = 3.5,
+    debug: bool = True,
 ) -> List[np.ndarray]:
-    A, bb = create_graph(frames, edges, ref)
-    x = solve(A, bb)
-    params = x.reshape(frames, 6)
+    # pass-through knobs for create_graph:
+    long_alpha: float = 0.35
+    long_dt_power: float = 1.0
+    min_short_weight: float = 0.05
+    skip_long_below: float = 0.02
+    if frames <= 0:
+        return []
+    if not edges:
+        return [np.eye(3, dtype=np.float64) for _ in range(frames)]
 
-    # H_i maps frame i -> reference frame.
+    work_edges = list(edges)
+    last_out = None
+    iters = max(1, int(robust_iters)) if robust else 1
+
     H: List[np.ndarray] = []
-    for i in range(frames):
-        a, b, c, d, tx, ty = params[i]
-        H.append(
-            np.array([[a, b, tx], [c, d, ty], [0.0, 0.0, 1.0]], dtype=np.float64)
+    for it in range(iters):
+        A, bb = create_graph(
+            frames,
+            work_edges,
+            ref_frame=int(ref),
+            gauge_weight=1e3,
+            long_alpha=float(long_alpha),
+            long_dt_power=float(long_dt_power),
+            min_short_weight=float(min_short_weight),
+            skip_long_below=float(skip_long_below),
         )
+        x = solve(A, bb)
+        params = x.reshape(frames, 6)
+        H = _build_H_from_params(params)
+
+        if not robust:
+            return H
+
+        work_edges, info = _robust_reweight_edges(
+            work_edges,
+            H,
+            z_thresh=float(z_thresh),
+            tukey=True,
+            keep_short_floor=0.15,
+        )
+
+        if debug:
+            print(
+                f"[graphtr] IRLS it={it} "
+                f"outliers={info['n_outliers']} mean_wrob={info['mean_wrob']:.3f}"
+            )
+
+        n_out = int(info.get("n_outliers", 0))
+        if last_out is not None and n_out == last_out:
+            break
+        last_out = n_out
 
     return H

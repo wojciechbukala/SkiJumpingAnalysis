@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 from transform.graphtr import Edge
 from collections import deque
-LOOKBACK = 0  # "long edge" every time we have lookback+1 frames in memory
+LOOKBACK = 2  # "long edge" every time we have lookback+1 frames in memory
 DEFAULT_SAMPLE_RATE = 1
 # Global switch: "ecc" use ECC for all frames
 # anything else use SIFT + RANSAC for all frames
@@ -47,8 +47,6 @@ def ecc_2frame(
     criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT,number_of_iterations,  termination_eps)
     mask1= Masking.create_mask(im1.shape, provider, prev_idx)
     mask2= Masking.create_mask(im2.shape, provider, curr_idx)
-    # Combine masks with bitwise AND
-    mask = cv2.bitwise_and(mask1, mask2)
     # Initialize warp_matrix before calling the transform finder
     if warp_mode == cv2.MOTION_AFFINE:
         warp_matrix = np.eye(2, 3, dtype=np.float32)
@@ -56,7 +54,7 @@ def ecc_2frame(
         warp_matrix = np.eye(3, dtype=np.float32)
     # Run the ECC algorithm. The results are stored in warp_matrix.
     # cc is the correlation coefficient
-    (cc, warp_matrix) = find_right_transform(im1, im2, warp_mode, criteria, mask, gaussFiltSize, warp_matrix)
+    (cc, warp_matrix) = find_right_transform(im1, im2, warp_mode, criteria, mask1,mask2, gaussFiltSize, warp_matrix)
     # If the warp mode is AFFINE, then convert the warp matrix to 3x3
     if warp_mode == cv2.MOTION_AFFINE:
         warp_matrix = np.vstack([warp_matrix, [0, 0, 1]]) if warp_mode == cv2.MOTION_AFFINE else warp_matrix
@@ -69,31 +67,33 @@ def find_right_transform(
     im2: np.ndarray,
     warp_mode: int,
     criteria,
-    inputMask: np.ndarray | None,
+    inputMask1: np.ndarray | None,
+    inputMask2: np.ndarray | None,
     gaussFiltSize: int,
     init_warp: np.ndarray,
     sobel_th: float = 0.03,          # threshold on texture level
     sift_nfeatures: int = 2000,
     ransac_reproj_th: float = 3.0,
-    min_inliers: int = 40,
-    min_inlier_ratio: float = 0.25,
+    min_inliers: int = 3,
+    min_inlier_ratio: float = 0.05,
 ) -> tuple[float, np.ndarray]:
-    valid_mask = inputMask
     # Texture gating (mean Sobel magnitude)
-    mean_mag = _mean_sobel_mag(im1, valid_mask)
+    mean_mag = _mean_sobel_mag(im1, inputMask1)
     if mean_mag < sobel_th:
         return 0.0, _identity_warp(warp_mode)
 
     # ECC branch
     if str(GLOBAL_VAR).lower() == "ecc":
         try:
+            # Combine masks with bitwise AND
+            mask = cv2.bitwise_and(inputMask1, inputMask2)
             warp = init_warp.copy().astype(np.float32)
             cc, warp = cv2.findTransformECC(
                 im1, im2,
                 warp,
                 warp_mode,
                 criteria,
-                valid_mask,
+                mask,
                 gaussFiltSize
             )
             return float(cc), warp
@@ -107,8 +107,8 @@ def find_right_transform(
 
         # Detect and compute SIFT descriptors
         sift = cv2.SIFT_create(nfeatures=sift_nfeatures)
-        kp1, des1 = sift.detectAndCompute(im1_u8, valid_mask)
-        kp2, des2 = sift.detectAndCompute(im2_u8, valid_mask)
+        kp1, des1 = sift.detectAndCompute(im1_u8, inputMask1)
+        kp2, des2 = sift.detectAndCompute(im2_u8, inputMask2)
         if des1 is None or des2 is None or len(kp1) < 6 or len(kp2) < 6:
             return 0.0, _identity_warp(warp_mode)
 
@@ -206,12 +206,8 @@ def detect_motion_sequence(
                 provider,
                 warp_mode=warp_mode,
             )
-            results.append(Edge(
-                frame_i_index=curr_idx,
-                frame_j_index=prev_idx,
-                warp_matrix=warp_matrix,
-                weight=cc,
-            ))
+            
+            results.append(Edge(curr_idx, prev_idx, warp_matrix, cc))
         except cv2.error as e:
             print(f"ECC alignment failed (short) between {prev_idx} and {curr_idx}: {e}")
 
@@ -233,12 +229,10 @@ def detect_motion_sequence(
                         provider,
                         warp_mode=warp_mode,
                     )
-                    results.append(Edge(
-                        frame_i_index=curr_idx,
-                        frame_j_index=old_idx,
-                        warp_matrix=warp_matrix2,
-                        weight=cc2,
-                    ))
+                    if cc2 > 0.0:
+                        cc2 *= 0.35
+                        results.append(Edge(curr_idx, old_idx, warp_matrix2, cc2))
+
                 except cv2.error as e:
                     print(f"ECC alignment failed (long) between {old_idx} and {curr_idx}: {e}")
 
