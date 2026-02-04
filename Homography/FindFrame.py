@@ -9,15 +9,18 @@ from SwitchCam import switchCam
 from FindLines import FindKHS
 
 
+# find frame with the landing of the jumper and proper K/HS lines
 def _find_landing_frame(camera_intervals):
     jump_interval = next((interval for interval in camera_intervals if interval.camera_type == "Jump"), None)
     
     if jump_interval is not None:
+        # the jump on the big size hill lasts about 7s and jumper is landing in the 6s of the movement
         jump_frame_idx = jump_interval.start.frame_idx + int(((jump_interval.end.frame_idx - jump_interval.start.frame_idx) * 0.85))
         return jump_frame_idx
     else:
         return None
 
+# find the frame with the jumper on the inrun (during accelerating)
 def _find_inrun_frame(camera_intervals):
     inrun_interval = next((interval for interval in camera_intervals if interval.camera_type == "Acceleration"), None)
     if inrun_interval is None:
@@ -29,6 +32,7 @@ def _find_inrun_frame(camera_intervals):
     else:
         return None
     
+# get frame from video with specified frame index    
 def _get_frame(video_path, frame_number):
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():

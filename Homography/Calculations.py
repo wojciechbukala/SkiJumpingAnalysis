@@ -2,25 +2,31 @@ import math
 import numpy as np
 import cv2
 
+# calculate the angle of line l wrt image
 def _angle(l):
     x1,y1,x2,y2 = l
     return math.atan2(y2-y1, x2-x1)
 
+# calculate the mid point of line l
 def _mid(l):
     x1,y1,x2,y2 = l
     return ((x1+x2)/2.0, (y1+y2)/2.0)
 
+# calculate distance between a and b
 def _dist(a,b):
     return math.hypot(a[0]-b[0], a[1]-b[1])
 
+# calculate the angle difference between a and b
 def _angdiff(a,b):
     d = abs(a-b) % math.pi
     return min(d, math.pi-d)
 
+# caluculate length of the line l
 def _length(l):
     x1, y1, x2, y2 = l
     return math.hypot(x2-x1, y2-y1)
 
+# get constantly ditributed points among line
 def _get_line_points(l, num_points=20):
     x1, y1, x2, y2 = l
     points = []
@@ -31,6 +37,7 @@ def _get_line_points(l, num_points=20):
         points.append((x, y))
     return points
 
+# get distance between lines calcualted with distributed points
 def _min_dist_between_lines(l1, l2, num_points=20):
     points1 = _get_line_points(l1, num_points)
     points2 = _get_line_points(l2, num_points)
@@ -43,6 +50,8 @@ def _min_dist_between_lines(l1, l2, num_points=20):
                 min_dist = dist
     return min_dist
 
+# eliminate lines that are very close to each other, pick the longer one
+# lines close to each other are often the same orginal line/object
 def _eliminate_close_lines(lines, dist_threshold=20, angle_threshold_deg=5):
     lines = [tuple(map(float,l)) for l in lines]
     lines.sort(key=_length, reverse=True)
@@ -61,6 +70,7 @@ def _eliminate_close_lines(lines, dist_threshold=20, angle_threshold_deg=5):
             kept.append(l)
     return kept 
 
+# find the best pair for inrun track lines
 def _find_track_pair(filtered_lines, img_height, img_width):
     if len(filtered_lines) < 2:
         return None

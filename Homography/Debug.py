@@ -5,6 +5,8 @@ from FindLines import FindInrunTracks, FindInrunSteps, FindKHS
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
+# function to draw line at the specific frame
+# can be used to visulaize the reslut of FindInrunTracks, FindInrunSteps, FindKHS
 def draw_lines(frame, params):
 
     h, w = frame.shape[:2]
@@ -44,28 +46,39 @@ def draw_lines(frame, params):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
+# main pipeline to find inrun and landing frame and do line calculations on them
 def pipeline(video_path, inrun=True, landing=True, debug=False):
     inrun_frame, landing_frame = find_frames(ROOT_DIR/video_path, inrun_frame=inrun, landing_frame=landing)
     
+    # try to find feasible inrun frame
     if inrun_frame is not None:
+
+        #try to find lines
         track_lines = FindInrunTracks(inrun_frame)
         print(track_lines)
 
+        # visualize
         if debug:
             draw_lines(inrun_frame, track_lines)
 
+        #try to find stairs
         stairs_lines = FindInrunSteps(inrun_frame)
         print(stairs_lines)
 
+        # visualize
         if debug:
             draw_lines(inrun_frame, stairs_lines)
 
     else:
         print('Feasable frame for inrun not found')
 
+    # try to find feasisble landing frame
     if landing_frame is not None:
+        
+        #try to find lines
         lines = FindKHS(landing_frame)
 
+        # visualize
         if debug:
             draw_lines(landing_frame, lines)
     else:

@@ -10,6 +10,7 @@ SEGMENTATION_MODEL_PATH = ROOT_DIR / "models/best-segmentation.pt"
 
 MODEL = YOLO(SEGMENTATION_MODEL_PATH)
 
+# find lines representing the inrun tracks lines
 def FindInrunTracks(frame):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
@@ -57,34 +58,41 @@ def FindInrunTracks(frame):
 
     return result
 
-
+# find lines representing stairs of the inrun (parallel to the tracks)
 def FindInrunSteps(frame):
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     h, w = frame.shape[:2]
 
+    # region of interest - the bottom-right side of the frame
     roi_y_start, roi_y_end = h // 2, h
     roi_x_start, roi_x_end = w*3 // 5, w
 
     roi = hsv[roi_y_start:roi_y_end, roi_x_start:roi_x_end]
 
+
     lower_white = np.array([80, 30, 50])
     upper_white = np.array([100, 55, 100])
     mask = cv2.inRange(roi, lower_white, upper_white)
 
+    # close and open morpohology to get rid of small regions
     horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (31, 1))
     general_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, horizontal_kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, general_kernel, iterations=2)
 
+    # canny edges detector
     edges = cv2.Canny(mask, 50, 100)
 
+    # transform to the lines with hough
     lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=20, minLineLength=50, maxLineGap=3)
    
     lines = [l[0] for l in lines] if lines is not None else []
 
+    # filter lines - eliminate the close ones and with the inaproprioate angle
     filtered_lines = Calculations._eliminate_close_lines(lines, dist_threshold=10, angle_threshold_deg=5)
     filtered_lines = [l for l in filtered_lines if abs(Calculations._angle(l)) < 0.1]
 
+    # find the best pair
     pair = sorted(filtered_lines, key=Calculations._length, reverse=True)[:2]
 
     result = []
@@ -102,25 +110,30 @@ def FindInrunSteps(frame):
             b = gy1
 
         result.append([a, b])
+    
+    # return lines
     return result
 
 def FindKHS(frame):
+    # use segmentation model
     results = MODEL(source=frame, conf=0.5)
     res = results[0]
 
-    h, w = frame.shape[:2]
 
     result = []
+    # iterate through detected masks
     for i, mask in enumerate(res.masks.xy):
         points = np.array(mask, dtype=np.float32)
         [vx, vy, x0, y0] = cv2.fitLine(points, cv2.DIST_L2, 0, 0.01, 0.01)
         vx, vy, x0, y0 = float(vx[0]), float(vy[0]), float(x0[0]), float(y0[0])
         
+        # calculate line parameters
         a = vy / vx
         b = y0 - (a*x0)
 
         result.append([a ,b])
 
+    # return liness
     return result
 
 if __name__ == "__main__":
