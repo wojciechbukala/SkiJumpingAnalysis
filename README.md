@@ -6,3 +6,5 @@ Ski jumping video samples drive: https://drive.google.com/drive/folders/1NacD2Fm
 folder called videos to put video samples. 
 
 Roboflow annotated data: https://app.roboflow.com/skijumpinglabeling
+
+Presentation: https://docs.google.com/presentation/d/1ppiDII5XNFy0YP4QXc20gLu-Mdj3y_mMC-GaFx9Spqw/edit?usp=sharing
