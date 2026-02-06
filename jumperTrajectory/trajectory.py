@@ -70,7 +70,7 @@ def compute_trajectory(transformations, ref_frame, stop_frame, provider):
     use_edges = len(transformations) > 0 and isinstance(transformations[0], Edge)
     if use_edges:
         warp_by_pair = {(e.frame_i_index, e.frame_j_index): e.warp_matrix for e in transformations}
-
+    old_x: int = 10000000
     n = stop_frame - ref_frame
     for k in range(n):
         frame_global = ref_frame + k
@@ -93,6 +93,11 @@ def compute_trajectory(transformations, ref_frame, stop_frame, provider):
         x, y = point
         pt = np.array([x, y, 1.0], dtype=np.float64)
         mapped = C @ pt
+        #if mapped[0]<old_x:
         trajectory.append((mapped[0] / mapped[2], mapped[1] / mapped[2], 1.0))
+        #else:
+            # x coordite is monotonous decreasing
+        #    mapped[0]=old_x- (mapped[0]-old_x)
+        #old_x=mapped[0]
 
     return trajectory

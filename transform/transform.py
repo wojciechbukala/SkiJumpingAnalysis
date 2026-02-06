@@ -210,7 +210,8 @@ def detect_motion_sequence(
             results.append(Edge(curr_idx, prev_idx, warp_matrix, cc))
         except cv2.error as e:
             print(f"ECC alignment failed (short) between {prev_idx} and {curr_idx}: {e}")
-
+            #if fail, use identity, because graph will disconnect
+            results.append(Edge(curr_idx, prev_idx, np.eye(3,3,0), 0.0))
         # Update history AFTER processing short edge
         history.append((curr_idx, curr))
 

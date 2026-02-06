@@ -62,8 +62,8 @@ def create_graph(
     *,
     long_alpha: float = 0.35,        # downweight long edges
     long_dt_power: float = 1.0,      # additionally divide by (dt^power)
-    min_short_weight: float = 0.05,  # keep chain connectivity
-    min_long_weight: float = 0.0,    # usually 0, long edges can disappear
+    min_short_weight: float = 0.10,  # keep chain connectivity
+    min_long_weight: float = 0.05,    # usually 0, long edges can disappear
     skip_long_below: float = 0.02,   # skip long edges that are too weak
 ) -> Tuple[csr_matrix, np.ndarray]:
     n_equations = 6 * len(edges) + 6  # 6 equations per edge + 6 for ref frame
@@ -93,8 +93,8 @@ def create_graph(
             w_eff = max(w_eff, float(min_long_weight))
 
             # skip very weak long edges (prevents near-zero rows -> numeric issues)
-            if w_eff < float(skip_long_below):
-                continue
+            #if w_eff < float(skip_long_below):
+            #    continue
 
         sqrt_weight = float(np.sqrt(max(w_eff, 0.0)))
 
