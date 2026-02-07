@@ -8,11 +8,23 @@ In order to test our solutions and ideas, we used recordings of ski jumping atte
 By processing the raw live streams, we extracted \textbf{45 individual jumping clips} from the Oberstdorf event and \textbf{67 clips from Garmisch-Partenkirchen}. All videos were captured at a resolution of 1920$\times$1080 (Full HD). This resulted in a total of 112 unique jumping attempts for analysis.
 
 \section{Jumper detection}
-To test detection pipeline, we used the video described above. The detection module, based on a fine-tuned object detector, successfully localized the center of mass. As evidenced by the analysis of sample trajectories, the pipeline integrates a segmentation refinement step and applies Kalman filtering to the raw measurements. Comparing the raw detection output with the filtered states reveals that the Kalman filter effectively mitigates detection noise, resulting in a smooth and continuous flight path. Visual verification confirms that the generated bounding boxes consistently track the jumper's silhouette throughout the flight phase, validating the system's robustness against background clutter and posture changes.
+
+\subsection{Dataset preparation}
+To prepare the data set, the video frames were manually annotated. as presented in the image below.
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=0.9\linewidth]{images/detectionResult.png}
+    \includegraphics[width=0.8\linewidth]{images/annotation.png}
+    \caption{6 frames from the video after detection} 
+    \label{fig:projection}
+\end{figure}
+
+\subsection{Detection result}
+To test the detection pipeline, we used the video described above. The detection module, based on a fine-tuned object detector, successfully localized the center of mass. As evidenced by the analysis of sample trajectories, the pipeline integrates a segmentation refinement step and applies Kalman filtering to the raw measurements. Comparing the raw detection output with the filtered states reveals that the Kalman filter effectively mitigates detection noise, resulting in a smooth and continuous flight path. Visual verification confirms that the generated bounding boxes consistently track the jumper's silhouette throughout the flight phase, validating the system's robustness against background clutter and posture changes.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\linewidth]{images/detectionResult.png}
     \caption{6 frames from the video after detection} 
     \label{fig:projection}
 \end{figure}
@@ -149,7 +161,51 @@ In theory, adding longer edges (e.g., $k\rightarrow k-2$, $k\rightarrow k-3$) sh
     \label{fig:cumulative_traj_final}
 \end{figure}
 
-\subsection{Final pipeline choice}
+\section{Fitting lines and homography problem}\label{sec:homography}
+In order to estimate the affine and metric homography between the camera plane and the jumper's plane, it is necessary to identify pairs of parallel lines, ideally with one pair perpendicular to the other.
+
+\subsection{Fitting lines}
+The figures below present the results of the line fitting process for the inrun frame and the landing frame.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\linewidth]{images/Inrun.png}
+    \caption{Fitted lines for the inrun frame.}
+    \label{fig:inrun_lines}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\linewidth]{images/KHS.png}
+    \caption{Fitted lines for the landing frame.}
+    \label{fig:landing_lines}
+\end{figure}
+
+\subsection{Inrun frame challenges}
+The primary challenge in this phase is the significant variability between different ski jumping hills and the broadcasting techniques used. While the inrun tracks provide a consistent pair of parallel lines across all events, the second pair of reference lines (necessary for complete rectification) varies significantly depending on the specific hill architecture.
+
+Furthermore, the method of filming poses a major obstacle. As shown in Figure \ref{fig:frame_variation_1} and Figure \ref{fig:frame_variation_2}, even within the same event, the framing can change drastically. Some jumpers are recorded with a wide view covering the entire inrun, while others are captured with a close-up tracking shot. These distinct perspectives cannot be processed using a single, generalized algorithm.
+
+Due to these inconsistencies, we were unable to develop a universal algorithm capable of automatically fitting two pairs of parallel lines for every case. Each specific camera angle and hill configuration would require a tailored approach.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\linewidth]{images/frame1.png}
+    \caption{Example of a wide-angle shot of the inrun.}
+    \label{fig:frame_variation_1}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\linewidth]{images/frame2.png}
+    \caption{Example of a close-up shot from the same event.}
+    \label{fig:frame_variation_2}
+\end{figure}
+
+\subsection{Landing frame challenges}
+In the landing frame, the main limitation is the lack of a second pair of reliable reference lines. While the K-point and Hill Size (HS) lines form one parallel pair, the side boundaries of the landing area (bands) or other visible markings are rarely strictly perpendicular to them or consistently visible. Consequently, we were only able to reliably extract the K and HS lines in these frames, which is insufficient for full metric rectification without additional constraints.
+
+\section{Final pipeline choice}
 To summarize, the final configuration used in the project is:
 \begin{itemize}
     \item per-shot processing (shot-change detection and reset of the reference);

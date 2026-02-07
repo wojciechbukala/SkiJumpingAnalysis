@@ -1,0 +1,6 @@
+This project developed a computer vision pipeline for analyzing ski jumping performances by estimating the jumper's trajectory (in the 2D form at this stage). By combining classical image processing with modern computer vision techniques, we addressed several challenges, such as:
+\begin{itemize}
+    \item \textbf{Detections} - detection of the ski jumper in every frame of the video with the usage of the modern approach with the utilization of detection neural network. We implemented also robust algorithms to detect critical infrastructure, such as the inrun tracks, inrun steps and K/HS lines.
+    \item \textbf{Motion Estimation} - the system successfully estimated camera motion even in challenging tracking shots. This allowed to calculate the projection of the jumper's movement from individual frames onto a unified reference plane.
+    \item \textbf{Trajectory Visualization} Integration of YOLO-based object detection with motion model allowed for the reconstruction of the jumper's flight path, providing a visual representation of the jump's dynamics across multiple camera shots.
+\end{itemize}

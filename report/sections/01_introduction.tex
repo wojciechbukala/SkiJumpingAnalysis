@@ -10,12 +10,12 @@ The main objectives are: to design and implement algorithms for precise spatiote
 Expected outcomes include a reproducible implementation for trajectory reconstruction, quantitative performance metrics (accuracy, latency, robustness), and guidelines for practical deployment in training environments. 
 The remainder of the report describes related work, the chosen methods and system design, experimental results, and conclusions with future directions.
 
-\section{Used technologies}
+\section{Used technologies and algorithms}
 
 \begin{itemize}
     \item \textbf{YOLOv8} - A state-of-the-art real-time object detection system. In this project, YOLOv8 is utilized to precisely locate the ski jumper in every video frame, providing bounding box coordinates that serve as the foundational data for trajectory estimation.
-    \item \textbf{SAM3} - A image segmentation model developed by Meta AI. Used to generate high-fidelity binary masks of the jumper. It ensures that the jumper's movement does not interfere with the backgorund stabilization algorithms.
-    \item \textbf{ECC}
-    \item \textbf{RANSAC}
+    \item \textbf{SAM3} - A image segmentation model developed by Meta AI. Used to generate high-fidelity binary masks of the jumper. It ensures that the jumper's movement does not interfere with the background stabilization algorithms.
+    \item \textbf{ECC} - An iterative algorithm for parametric image alignment that is robust to photometric distortions. In this project, ECC is employed to estimate the geometric transformation (homography) between consecutive video frames by maximizing the correlation coefficient, effectively compensating for global camera motion.
+    \item \textbf{RANSAC} - An iterative method for robust parameter estimation in datasets containing a significant number of outliers. It is utilized to filter feature matches during the homography calculation, ensuring that the background stabilization relies exclusively on static scene elements while ignoring the moving jumper and other noise.
 \end{itemize}
 
