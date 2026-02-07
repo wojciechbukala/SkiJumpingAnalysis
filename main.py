@@ -12,7 +12,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import List
-
+import jumperTrajectory.trajectory as tj
+from jumperTrajectory.smoothing import smooth_trajectory
 """
 SkiJumpingAnalysis - main skeleton
 
@@ -122,9 +123,17 @@ def main(video_path: Path, csv_path: Path) -> int:
 
         refFrame = stop_frame
 
+    # Apply smoothing to all detected trajectories (Post-Processing)
+    # We process each shot independently to avoid artifacts at camera switches
+    trajectory_list_graph_smooth = [smooth_trajectory(t) for t in trajectory_list_graph]
+    trajectory_list_cum_smooth = [smooth_trajectory(t) for t in trajectory_list_cum]
+
     # Plot all collected trajectories
     plot_trajectories_2d(trajectory_list_graph, Path("outputPlot") / "graph")
     plot_trajectories_2d(trajectory_list_cum, Path("outputPlot") / "cumulative")
+    # Plot the smoothed trajectories
+    plot_trajectories_2d(trajectory_list_graph_smooth, Path("outputPlot") / "graph_smooth")
+    plot_trajectories_2d(trajectory_list_cum_smooth, Path("outputPlot") / "cumulative_smooth")
     cap.release()
     return 0
 
