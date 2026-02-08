@@ -162,10 +162,31 @@ In theory, adding longer edges (e.g., $k\rightarrow k-2$, $k\rightarrow k-3$) sh
 \end{figure}
 
 \section{Fitting lines and homography problem}\label{sec:homography}
-In order to estimate the affine and metric homography between the camera plane and the jumper's plane, it is necessary to identify pairs of parallel lines, ideally with one pair perpendicular to the other.
+After aligning the trajectory to a common reference frame (via inter-frame \emph{partial affine 2D}
+stabilization), we investigated a plane-rectification approach based on vanishing geometry.
+In principle, estimating an affine and then metric rectification of the motion plane requires detecting
+(at least) two dominant directions on the plane, i.e., two sets of real-world parallel lines, ideally
+with one set perpendicular to the other.
+
+\medskip
+
+In practice, this requirement could not be satisfied reliably in our video shots.
+Across different views, the only geometric structure that remains consistently visible and stable is
+given by the parallel lines of the ski track itself.
+Other potentially useful cues (e.g., a second independent family of parallels, right angles, or
+repeatable landmarks) are either absent, too noisy, or not consistently observable due to viewpoint
+changes, motion blur, and occlusions.
+As a consequence, we cannot robustly estimate the vanishing line of the plane, nor enforce metric
+constraints (such as orthogonality) needed to remove perspective in a principled way.
 
 \subsection{Fitting lines}
-The figures below present the results of the line fitting process for the inrun frame and the landing frame.
+We therefore limit the line fitting process to the track boundaries, which provide a single dominant
+direction in the image.
+While these lines can be fitted reliably by least squares (or robust fitting) in each shot, a single
+family of parallels is insufficient to fully determine the plane rectification.
+The figures below show the fitted track lines for the inrun and landing frames, highlighting both the
+availability of one consistent direction and the lack of additional stable geometric constraints.
+
 
 \begin{figure}[H]
     \centering

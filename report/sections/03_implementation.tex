@@ -72,7 +72,35 @@ Raw detection data is processed into logical camera intervals. The module includ
     \texttt{Jump} - The flight and landing phase
 \end{itemize}
 
+
 \section{Trajectory estimation}
+Our trajectory estimation pipeline is built around two main components: (i) extracting a reliable 2D point for the athlete in each frame, and (ii) mapping all these points into a single, stable reference coordinate system.
+
+\medskip
+
+\noindent\textbf{Inter-frame stabilization via affine transformation.}
+To express the trajectory in a common coordinate system, we estimate a 2D partial affine transformation between frames.
+We extract SIFT keypoints and descriptors, then match descriptors using the \(L_2\) distance.
+To reject ambiguous correspondences we use the \emph{ratio test} (nearest-neighbor distance over second-nearest distance), keeping only reliable matches.
+
+\medskip
+
+\noindent\textbf{Robust transformation estimation with RANSAC.}
+Given the filtered matches, we estimate the transformation \(H_{t\rightarrow t-1}\) using RANSAC to handle outliers.
+At each iteration RANSAC samples a minimal set of 4 correspondences, fits a candidate homography, and counts inliers using an \(L_2\) reprojection error threshold.
+The model with the largest consensus set is selected, and the final homography is refined using all inliers.
+
+\medskip
+
+\noindent\textbf{Trajectory alignment to a reference frame.}
+Finally, we map each CoM point into a chosen reference frame by composing the inter-frame homographies:
+\[
+\tilde{p}_t \sim H_{t\rightarrow \text{ref}}\, p_t,
+\qquad
+H_{t\rightarrow \text{ref}} = H_{t\rightarrow t-1}\,H_{t-1\rightarrow t-2}\cdots H_{\text{ref}+1\rightarrow \text{ref}}.
+\]
+This produces a stabilized trajectory \(\{\tilde{p}_t\}\) where all points are expressed in the same image coordinate system, enabling consistent downstream geometric reasoning.
+
 
 \section{Homography from camera plane to the scene}\label{Homography}
 This subsection is responsible for extracting specific geometric features from the video footage in order to calculate the angle and the distance between the camera plane and the plane of the jumper in some frame. This module uses additional functions of the shot detection phase, find \texttt{\_inrun\_frame} and \texttt{find\_landing\_frame}. Those functions output the most feasible frames (indexes) for the calculations. This feasibility was chosen by empiric experiments and are based on the time:

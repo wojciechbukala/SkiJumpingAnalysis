@@ -72,8 +72,51 @@ This produces a trajectory that is consistent within each shot and compensated f
 The final result is a set of per-shot trajectories expressed in a common reference frame for each shot.
 
 \section{From 2D to 3D}
-The transition from 2D image to a 3D trajectory can be achieved through perspective rectification using homography transformations. As we have already computed homography between consecutive frames all video frames can be aligned to a common reference frame.
+Once the 2D detections have been stabilized, all trajectory points are expressed in a single
+\emph{reference frame} (the chosen keyframe) by composing the inter-frame warps.
+In this way, the motion is no longer described in a moving camera coordinate system, but in a
+common image coordinate system where geometric reasoning becomes consistent.
 
-Than after stabilization, a single rectifying homography can be estimated between the reference frame and the physical motion plane. This transformation can be computed using known characteristic points, or geometric constraints visible in the scene. For homography calculation experiments and trails see \ref{Homography}.
+\medskip
 
-The final trajectory is obtained by applying the composed stabilization and rectification transformations to each frame. As a result, the original 2D image coordinates are mapped into a metric coordinate system that reflects real-world spatial relationships.
+Our goal is then to remove the remaining \emph{perspective distortion} by reasoning directly on the
+reference frame. Since we assume that the jumper trajectory lies on a single physical plane
+(\(Z=0\)), the problem reduces to estimating the relationship between the camera and this plane,
+and then unprojecting the stabilized 2D trajectory onto the plane.
+
+\medskip
+
+To do so, we need the following information (all extracted on the reference frame):
+(i) geometric cues that belong to the motion plane, such as two (or more) sets of \emph{parallel lines}
+in the real world (e.g., track edges, fence/rail lines, painted markings), which allow estimating the
+\emph{vanishing points} and therefore the \emph{vanishing line} \(l_\infty\) of the plane;
+(ii) either the camera intrinsics \(K\) (from calibration) \emph{or} additional metric constraints
+(orthogonality on the plane, known aspect ratio, or a known distance) to upgrade the rectification
+from affine to metric.
+
+\medskip
+
+Given the vanishing line \(l_\infty\) and \(K\), the normal of the trajectory plane in camera coordinates
+can be recovered up to scale (in particular, \(n \propto K^{-T} l_\infty\)).
+This directly provides the \emph{angle between the camera and the plane} by comparing \(n\) with the
+camera optical axis \(e_z\):
+\[
+\theta_{\text{plane}} = \arccos\!\left(\frac{n^\top e_z}{\|n\|}\right).
+\]
+After estimating the plane geometry, we rectify the reference frame with a plane-induced homography
+\(H_{\text{rect}}\) that maps the plane to a fronto-parallel (metric) coordinate system.
+In practice, this homography can be obtained either (a) from point correspondences between the image
+and a planar layout with known geometry, or (b) by enforcing the vanishing-line constraint for affine
+rectification and then applying metric constraints to obtain a Euclidean rectification.
+The angle of the trajectory on the plane is given by the iformation on the slope.
+\medskip
+
+Finally, each original measurement \(p_t\) is mapped to plane (metric) coordinates by composing
+stabilization and rectification:
+\[
+\tilde{p}_t \sim H_{\text{rect}}\,H^{\text{ref}}_t\,p_t,
+\]
+where \(H^{\text{ref}}_t\) maps frame \(t\) into the reference frame, and \(H_{\text{rect}}\) removes perspective
+on the motion plane. The resulting trajectory is expressed in a planar metric coordinate system, and
+the 3D trajectory is obtained by lifting it as \((X_t, Y_t, 0)\) under the \(Z=0\) assumption (with an
+optional global scale set by one known distance on the plane).
