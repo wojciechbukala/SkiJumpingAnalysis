@@ -74,8 +74,8 @@ Raw detection data is processed into logical camera intervals. The module includ
 
 \section{Trajectory estimation}
 
-\section{Homography from camera plane to the scene}
-This subsection is responsible for extracting specific geometric features from the video footage in order to calculate the angle and the distance between the camera plane and the plane of the jumper in some frame. This module uses additional functions of the shot detection phase, find \texttt{\_inrun\_frame} and \textt{find\_landing\_frame}. Those functions output the most feasible frames (indexes) for the calculations. This feasibility was chosen by empiric experiments and are based on the time:
+\section{Homography from camera plane to the scene}\label{Homography}
+This subsection is responsible for extracting specific geometric features from the video footage in order to calculate the angle and the distance between the camera plane and the plane of the jumper in some frame. This module uses additional functions of the shot detection phase, find \texttt{\_inrun\_frame} and \texttt{find\_landing\_frame}. Those functions output the most feasible frames (indexes) for the calculations. This feasibility was chosen by empiric experiments and are based on the time:
 \begin{itemize}
     \item Inrun Frame - extracted at 10\% of the duration of the \textit{Acceleration} phase. This point is chosen to ensure the camera has settled on the athlete, while the inrun tracks remain clearly visible before the camera pans significantly.
     \item Landing Frame - extracted at 85\% of the duration of the \textit{Jump} phase. This timing typically captures the landing area (K-point and HS lines) just as the athlete approaches the ground, ensuring that the relevant ground markings are in the field of view.
