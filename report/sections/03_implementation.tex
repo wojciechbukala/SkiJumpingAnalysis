@@ -80,8 +80,9 @@ Our trajectory estimation pipeline is built around two main components: (i) extr
 
 \noindent\textbf{Inter-frame stabilization via affine transformation.}
 To express the trajectory in a common coordinate system, we estimate a 2D partial affine transformation between frames.
-We extract SIFT keypoints and descriptors, then match descriptors using the \(L_2\) distance.
-To reject ambiguous correspondences we use the \emph{ratio test} (nearest-neighbor distance over second-nearest distance), keeping only reliable matches.
+Before extracting features, we mask out the bounding box containing the jumper and we also remove pixel-level graphic overlays (e.g., broadcast annotations) to prevent them from generating spurious keypoints.
+We then extract SIFT keypoints and descriptors on the remaining image content, and match descriptors using the \(L_2\) distance.
+To reject ambiguous correspondences we apply the \emph{ratio test} (nearest-neighbor distance over second-nearest distance), keeping only reliable matches.
 
 \medskip
 
