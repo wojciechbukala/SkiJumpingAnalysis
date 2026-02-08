@@ -161,6 +161,15 @@ In theory, adding longer edges (e.g., $k\rightarrow k-2$, $k\rightarrow k-3$) sh
     \label{fig:cumulative_traj_final}
 \end{figure}
 
+\paragraph{Savitzky-Golay trajectory smoothing (selected).} To refine the jumper's motion data, we implemented a Savitzky-Golay filter to remove digital noise and tracking jitter from the raw (x,y) coordinates. Unlike a standard moving average, this method fits successive subsets of adjacent data points with a low-degree polynomial. This approach effectively smooths the signal while preserving the essential geometric features of the movement—such as the peak of a parabolic flight path—which are often flattened by simpler filters. The filter is applied independently to each coordinate axis, utilizing a "nearest" boundary mode to maintain accuracy at the start and end of the trajectory. By minimizing the local least-squares error through polynomial fitting, we obtain a fluid, realistic trajectory that serves as a high-quality foundation for calculating precise velocity and acceleration metrics.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\linewidth]{images/trajectory_00_smooth.png}
+    \caption{Final smoothed trajectory.}
+    \label{fig:smoothed_traj}
+\end{figure}
+
 \section{Fitting lines and homography problem}\label{sec:homography}
 After aligning the trajectory to a common reference frame (via inter-frame \emph{partial affine 2D}
 stabilization), we investigated a plane-rectification approach based on vanishing geometry.
