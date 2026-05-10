@@ -1,8 +1,13 @@
 __pycache__/
+.DS_Store
+venv/
+venv_broken_*/
 videos/**
 !videos/.gitkeep
 metrics/**
 detectionOutputs/**
 outputPlot/
+outputGeometry/
 report/pdflatex/
 report/-p
+extracted_frames/
