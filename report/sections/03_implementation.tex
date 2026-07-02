@@ -1,150 +1,135 @@
-\section{Object Detection}
-In order to localize the ski jumper within each video frame, we employed an object detection technique based on convolutional neural networks. Specifically, we selected the YOLOv8 architecture for this task. 
+\section{Camera calibration}
+The first step of the implementation is the estimation of the camera intrinsic matrix. This calibration is required because the later geometric stages need to convert image points into camera rays and to interpret vanishing points as 3D directions.
+
+The camera is modeled with the pinhole projection equation
+\[
+\mathbf{x} \sim K [R \mid t] \mathbf{X},
+\]
+where \(\mathbf{X}\) is a 3D scene point, \(\mathbf{x}\) is its homogeneous image projection, and \(K\) is the intrinsic matrix. In the implemented calibration, zero skew is assumed and the matrix has the form
+\[
+K =
+\begin{bmatrix}
+f_x & 0 & c_x \\
+0 & f_y & c_y \\
+0 & 0 & 1
+\end{bmatrix}.
+\]
+Since no checkerboard sequence is available, the calibration is obtained from scene geometry. The method exploits the fact that 3D parallel lines are projected to image lines that meet at a common vanishing point. Moreover, if two 3D directions are orthogonal, their corresponding vanishing points \(\mathbf{v}_i\) and \(\mathbf{v}_j\) satisfy
+\[
+\mathbf{v}_i^\top \omega \mathbf{v}_j = 0,
+\qquad
+\omega = K^{-\top}K^{-1},
+\]
+where \(\omega\) is the image of the absolute conic.
+
+The calibration script starts from a frame that contains enough stable geometric information. In the current run, the selected frame is \texttt{extracted\_frames/G\_30out\_frame\_00004.jpg}. The frame is converted to grayscale, blurred, enhanced with CLAHE, and combined with the Sobel gradient magnitude in order to emphasize structural edges. Canny edge detection and a small morphological closing are then applied to obtain a cleaner edge map.
+
+Line segments are extracted from two regions of interest. The main detector searches the lower part of the image, starting at 60\% of the frame height, where the most useful track and snow-border structures are visible. A second detector searches the upper half of the frame to provide an additional geometric direction. The implementation uses OpenCV's Line Segment Detector as the default detector; a probabilistic Hough detector is also available but disabled in the current configuration. Candidate segments are filtered by length, line width, and edge support. Near-duplicate detections are removed by comparing their orientation, midpoint distance, and point-to-line distance. The remaining segments are numbered and saved as preview images and CSV files so that the useful lines can be selected explicitly.
+
+The user then groups the detected segments according to the 3D direction they represent. Each group must contain at least two image segments that are parallel in the real scene. In the current configuration, three main line groups are selected, plus one additional upper group. For a segment with endpoints \(\mathbf{p}_1\) and \(\mathbf{p}_2\), the corresponding homogeneous image line is computed as
+\[
+\ell = \mathbf{p}_1 \times \mathbf{p}_2.
+\]
+For each selected group, all line equations are stacked in a matrix \(L\). The vanishing point is estimated as the least-squares intersection of these lines by solving
+\[
+L\mathbf{v} = 0
+\]
+with singular value decomposition. The solution is the right singular vector associated with the smallest singular value and is normalized so that the third homogeneous coordinate is equal to one.
+
+After the vanishing points have been estimated, the selected directions are treated as orthogonal constraints. With the principal point fixed at the image center and with non-square pixels allowed, the orthogonality equation becomes
+\[
+\frac{(u_i-c_x)(u_j-c_x)}{f_x^2}
++
+\frac{(v_i-c_y)(v_j-c_y)}{f_y^2}
++ 1 = 0,
+\]
+where \((u_i,v_i)\) and \((u_j,v_j)\) are two vanishing points. By defining \(a_x = 1/f_x^2\) and \(a_y = 1/f_y^2\), each orthogonal pair gives a linear equation in \(a_x\) and \(a_y\). The implementation solves this overdetermined system with least squares and then recovers \(f_x\) and \(f_y\). The current calibration output is saved in \texttt{outputGeometry/calibration\_K.json} and gives
+\[
+K =
+\begin{bmatrix}
+1781.14 & 0 & 960.00 \\
+0 & 1447.98 & 540.00 \\
+0 & 0 & 1
+\end{bmatrix}.
+\]
+
+\section{Object detection}
+In order to localize the ski jumper within each video frame, the implementation uses a convolutional object detector. The detector provides the jumper bounding box, which is then used both for trajectory extraction and for masking the athlete during background motion estimation.
 
 \subsection{Fine-tuning}
-To acquire the optimal model for ski jumper detection, we utilized fine-tuning to adapt a pre-trained YOLOv8 model. The goal was to recognize the jumper's bounding box with the highest possible accuracy.
+To adapt the detector to the ski-jumping domain, a pre-trained YOLOv8 model is fine-tuned on frames extracted from the available videos. Frames are sampled at random time intervals between 500 ms and 2500 ms, producing an initial dataset of 991 frames with broad temporal coverage of the jump sequence.
 
-This task required a well-defined and precise dataset. To construct this, we extracted frames from experimental videos at random time intervals ranging from 500 ms to 2500 ms. This sampling strategy ensured diverse temporal coverage of the entire jump sequence. As a result of this extraction process, we obtained a base dataset of 991 frames.
+The frames are annotated in Roboflow by drawing tight bounding boxes around the jumper. Sixteen background-only images are also included to reduce false positives. To improve robustness with respect to viewpoint and illumination changes, the dataset is augmented with rotations between \(-15^\circ\) and \(+15^\circ\) and brightness variations between \(-15\%\) and \(+15\%\).
 
-Following extraction, we proceeded with the annotation of the data using the \href{https://app.roboflow.com/skijumpinglabeling/skijumping/2}{Roboflow} platform. Bounding boxes were drawn tightly around the jumper to minimize background noise and exclude unnecessary margins. Additionally, we included 16 unannotated frames (background only) to improve the model's robustness against false positives.
+The augmented dataset is split into 2294 training images, 159 validation images, and 67 test images. Fine-tuning starts from the YOLOv8 Nano checkpoint, \texttt{yolov8n.pt}, and runs for 100 epochs with an input size of 640 pixels on an NVIDIA T4 GPU. The final model reaches high detection quality, with mAP50 equal to 0.992, mAP50-95 equal to 0.817, precision equal to 0.983, and recall equal to 0.975.
 
-To prevent overfitting and improve the model's generalization capabilities regarding angle and lighting conditions, we applied data augmentation. Specifically, we utilized rotation (between -15\textdegree{} and +15\textdegree{}) and brightness adjustment (between -15\% and +15\%). 
+\subsection{Detection pipeline}
+The detection pipeline processes the video frame by frame. For each frame, YOLO predicts the jumper bounding box. If multiple detections are returned, the detection with the highest confidence score is selected. YOLO tracking is used to maintain a consistent identity over time and to avoid mixing the target trajectory with short-lived false detections.
 
-For training and validation purposes, the augmented dataset was split as follows:
-\begin{itemize}
-    \item \textbf{Train set:} 2294 images (91\%)
-    \item \textbf{Valid set:} 159 images (6\%)
-    \item \textbf{Test set:} 67 images (3\%)
-\end{itemize}
+The bounding box is then used as the region of interest for segmentation with the Segment Anything Model. Applying SAM only inside the YOLO box reduces the computational cost and prevents the segmentation from being distracted by irrelevant image regions. From the binary mask returned by SAM, the geometric center of the segmented jumper is computed and used as the image-space center of mass.
 
-With the dataset prepared, we proceeded with fine-tuning using the following configuration:
-\begin{enumerate}
-    \item \textbf{Model Selection:} Initialization of the pre-trained YOLOv8 Nano (\texttt{yolov8n.pt}) as the starting checkpoint.
-    \item \textbf{Training Execution:} The training was executed via the \texttt{model.train()} function with 100 epochs, an image size of 640 pixels, using an NVIDIA T4 GPU (Device 0).
-\end{enumerate}
-
-The process yielded a highly effective model, confirmed by the final performance metrics:
-\begin{itemize}
-    \item \textbf{mAP50 (0.992):} Indicates that the model almost always detects the jumper accurately.
-    \item \textbf{mAP50-95 (0.817):} Suggests that the predicted bounding boxes align precisely with the jumper and their equipment.
-    \item \textbf{Precision (0.983) and Recall (0.975):} Confirms that the model produces very few false positives and successfully identifies the jumper in nearly every frame.
-\end{itemize}
-
-\subsection{Detection Pipeline}
-Leveraging the fine-tuned model, we constructed a pipeline for continuous detection and tracking across video frames.
-
-The pipeline processes the video frame-by-frame. First, the YOLO model localizes the jumper. In cases where the model detects multiple targets, the system selects the bounding box with the highest confidence score. To maintain continuity, we utilized YOLO's object tracking capabilities, assigning a unique ID to the detected subject to distinguish the continuous trajectory from momentary detection artifacts.
-
-To determine the jumper's precise Center of Mass (CoM), we integrated the Segment Anything Model (SAM). SAM is an advanced segmentation model capable of separating the jumper from the background with high pixel-level precision. Since SAM is computationally intensive, it is applied only within the bounding box coordinates provided by YOLO (the Region of Interest). Using the precise segmentation mask generated by SAM, the model calculates the exact geometric center of the jumper.
-
-However, the raw CoM coordinates calculated frame-by-frame often exhibit high-frequency noise or "jitter" due to minor segmentation fluctuations. To address this, we implemented a Kalman filter to estimate and smooth the jumper's trajectory.  The Kalman filter predicts the future position of the point based on previous states and corrects it using the current measurement. Consequently, the final tracking point moves smoothly, as the filter effectively mitigates noise by statistically weighing the predicted state against the measured position.
-
-\section{Slope model}
-The objective of this section of the code is the procedural generation of a ski jump profile based on geometric parameters.
-
-The class \texttt{Profile Database} contains a predefined dictionary featuring data for Obersdorf and Garmisch-Partenkirchen hills. It sotres key dimensions including:
-\begin{itemize}
-    \item \textbf{\texttt{H}}, \textbf{\texttt{N}} - total height and tower height
-    \item \textbf{\texttt{inrun\_angle}}, \textbf{\texttt{takeoff\_angle}}, \textbf{\texttt{landing\_angle}} - incline angles
-    \item \textbf{\texttt{inrun\_length}}, \textbf{\texttt{takeoff\_length}}, \textbf{\texttt{Hill Size}}, \textbf{\texttt{K-point}} - characteristic lengths
-\end{itemize}
-
-To accurately represent the curves of the hill, the project utilizes \textbf{Cubic Hermite Interpolation}. This is mathematical component that allows the curve to be defines by specifying endpoints and the desired slopes at those points.
-
-The \texttt{HillModel} class acts as the computational engine, translating \texttt{DataModel} parameters into \textit{(x, y)} coordinates. The coordinate system is anchored so that \textit{x} = 0 marks the start of the takeoff table.
+The raw center-of-mass measurements can contain frame-to-frame jitter caused by small changes in segmentation. For this reason, a Kalman filter is applied to smooth the sequence. The filter predicts the next point from the previous state and corrects the prediction with the current measurement, producing a more stable trajectory for the following geometric reconstruction steps.
 
 \section{Camera switch detection}
-The objective of this module is to automatically analyze ski jumping video footage to detect montage cuts (shot changes). The program segments the recording into logical sequences corresponding to different camera angles, allowing targeted analysis of a specific phase of the performance.
+The broadcast video contains multiple camera shots, so the implementation first segments the video into camera intervals. This allows the later trajectory and geometry stages to work only on frames that belong to the relevant phase of the jump.
 
-To handle video clips efficiently, the module implements several pre-processing optimizations:
-\begin{itemize}
-    \item \textbf{Downscaling} - Frames are resized to a width of 320 pixels.
-    \item \textbf{HSV Color Space} - Analysis is performed on Hue-Saturation histogram.
-    \item \textbf{Normalization} - Histograms are normalized using Min-Max scaling, making the comparison independent of the total pixel count.
-\end{itemize}
+Shot changes are detected by comparing consecutive frames. To reduce the processing cost, frames are downscaled to a width of 320 pixels. Each frame is converted to HSV color space and represented by a normalized two-dimensional histogram over hue and saturation. Consecutive histograms are compared with the Bhattacharyya distance; a distance above the configured threshold indicates a cut, provided that a minimum scene length constraint is satisfied.
 
-The core shot change detection algorithm involves comparing the histogram of consecutive frames to identify significant visual changes.
-
-Raw detection data is processed into logical camera intervals. The module includes a heuristic layer that attempts to classify the shot type based on the sequence and duration of the intervals. Classification based on the number if detected scenes and the position in the sequence assigns sementinc lables to the shots:
-\begin{itemize}
-    \item \texttt{Start} - The athlete at the starting bar.
-    \item \texttt{Acceleration/Acceleration A/B} - the inrun phase
-    \texttt{Jump} - The flight and landing phase
-\end{itemize}
-
+The detected cuts define a list of camera intervals. A heuristic classification step then assigns semantic labels to the intervals according to their duration and position in the sequence. Three-shot videos are labeled as \texttt{Start}, \texttt{Acceleration}, and \texttt{Jump}. Four-shot videos are labeled as \texttt{Start}, \texttt{AccelerationA}, \texttt{AccelerationB}, and \texttt{Jump}. These labels are later used to select suitable frames for inrun and landing geometry extraction.
 
 \section{Trajectory estimation}
-Our trajectory estimation pipeline is built around two main components: (i) extracting a reliable 2D point for the athlete in each frame, and (ii) mapping all these points into a single, stable reference coordinate system.
+The trajectory estimation pipeline combines the detected jumper points with inter-frame motion estimation. The goal is to express all center-of-mass measurements in one common reference frame before projecting them into the reconstructed 3D scene.
 
-\medskip
+\subsection{Background motion estimation}
+For each pair of consecutive frames in the selected camera interval, the implementation estimates a transformation from the current frame to the previous frame. Before computing the transformation, a binary mask removes the jumper bounding box and the broadcast overlay regions. This is important because the jumper is a moving foreground object, while the desired transformation must describe the camera and background motion.
 
-\noindent\textbf{Inter-frame stabilization via affine transformation.}
-To express the trajectory in a common coordinate system, we estimate a 2D partial affine transformation between frames.
-Before extracting features, we mask out the bounding box containing the jumper and we also remove pixel-level graphic overlays (e.g., broadcast annotations) to prevent them from generating spurious keypoints.
-We then extract SIFT keypoints and descriptors on the remaining image content, and match descriptors using the \(L_2\) distance.
-To reject ambiguous correspondences we apply the \emph{ratio test} (nearest-neighbor distance over second-nearest distance), keeping only reliable matches.
+The motion module supports both ECC alignment and a feature-based branch. In the current configuration, the feature-based branch is used. SIFT keypoints and descriptors are extracted on the valid image regions, descriptors are matched with the Euclidean distance, and Lowe's ratio test is applied to reject ambiguous matches. A homography is then estimated with RANSAC, using the current-frame points as source points and the previous-frame points as target points. If the homography estimate is unreliable, the pipeline can fall back to an affine model.
 
-\medskip
-
-\noindent\textbf{Robust transformation estimation with RANSAC.}
-Given the filtered matches, we estimate the transformation \(H_{t\rightarrow t-1}\) using RANSAC to handle outliers.
-At each iteration RANSAC samples a minimal set of 4 correspondences, fits a candidate homography, and counts inliers using an \(L_2\) reprojection error threshold.
-The model with the largest consensus set is selected, and the final homography is refined using all inliers.
-
-\medskip
-
-\noindent\textbf{Trajectory alignment to a reference frame.}
-Finally, we map each CoM point into a chosen reference frame by composing the inter-frame homographies:
+\subsection{Mapping points to a reference frame}
+The pairwise transformations are normalized as \(3 \times 3\) homographies and composed along the camera interval. If the reference frame is \(r\), a point measured in frame \(t\) is mapped into the reference coordinate system by
 \[
-\tilde{p}_t \sim H_{t\rightarrow \text{ref}}\, p_t,
-\qquad
-H_{t\rightarrow \text{ref}} = H_{t\rightarrow t-1}\,H_{t-1\rightarrow t-2}\cdots H_{\text{ref}+1\rightarrow \text{ref}}.
+\tilde{\mathbf{p}}_t \sim H_{t \rightarrow r}\mathbf{p}_t.
 \]
-This produces a stabilized trajectory \(\{\tilde{p}_t\}\) where all points are expressed in the same image coordinate system, enabling consistent downstream geometric reasoning.
-
+For frames after the reference frame, the cumulative transformation is obtained by multiplying the forward pairwise homographies. For frames before the reference frame, the inverse transformations are used. The implementation also propagates the motion scores along the chain and marks trajectory points as reliable only when the cumulative score remains above the configured threshold.
 
 \section{Homography from camera plane to the scene}\label{Homography}
-This subsection is responsible for extracting specific geometric features from the video footage in order to calculate the angle and the distance between the camera plane and the plane of the jumper in some frame. This module uses additional functions of the shot detection phase, find \texttt{\_inrun\_frame} and \texttt{find\_landing\_frame}. Those functions output the most feasible frames (indexes) for the calculations. This feasibility was chosen by empiric experiments and are based on the time:
+This part of the implementation extracts geometric features from selected video frames in order to relate the image plane to the physical ski-jumping scene. The shot-detection stage provides the relevant camera intervals, and two helper functions select representative frames:
 \begin{itemize}
-    \item Inrun Frame - extracted at 10\% of the duration of the \textit{Acceleration} phase. This point is chosen to ensure the camera has settled on the athlete, while the inrun tracks remain clearly visible before the camera pans significantly.
-    \item Landing Frame - extracted at 85\% of the duration of the \textit{Jump} phase. This timing typically captures the landing area (K-point and HS lines) just as the athlete approaches the ground, ensuring that the relevant ground markings are in the field of view.
+    \item \textbf{Inrun frame:} selected at 10\% of the \texttt{Acceleration} interval, where the camera has settled on the athlete and the inrun tracks are still visible.
+    \item \textbf{Landing frame:} selected at 85\% of the \texttt{Jump} interval, where the landing-area markings are likely to be visible as the athlete approaches the ground.
 \end{itemize}
 
-\subsection{Inrun Track Detection}
-The detection of the parallel tracks on the inrun relies on the classical computer vision techniques.
-\begin{itemize}
-    \item \textbf{Color Segmentation} - The image is converted to the HSV color palette. A threshold filter targets white pixels with values: H: 60-100, S: 15-30, V (200-255).
-    \item \textbf{ROI Masking} - To reduce noise, a geometric mask zeroes out the peripheral regions of the image, focusing the detector on the center where the tracks are expected.
-    \item \textbf{Morphological Filtering} - A sequence of \textit{Opening} and \textit{Closing} operations is applied using elliptical kernel.
-    \item \textbf{Line Extraction} - The canny edge detector finds high-gradient boundaries, which are then transformed into line segments using the \texttt{Probabilistic Hough Transform}.
-    \item \textbf{Eliminating close detections} - special function computes the distance between the lines to eliminate very close detections which represents the same information from the image.
-    \item \textbf{Pairing} - The resulting lines are passed to the function that takes into the consideration the distance between them and the position in the frame, and output the best pair of lines.
-\end{itemize}
+\subsection{Inrun track detection}
+The inrun tracks are extracted with classical image-processing operations. The frame is converted to HSV color space and thresholded to isolate bright, low-saturation pixels corresponding to snow and track markings. A geometric region of interest removes peripheral parts of the frame. Morphological opening and closing reduce noise, Canny edge detection extracts high-gradient boundaries, and the probabilistic Hough transform converts edge pixels into line segments.
 
-\subsection{Inrun Steps Detection}
-To assist in camera calibration, the system also detects the service stair parallel to the inrun tracks.
-\begin{itemize}
-    \item \textbf{Region of Interest} - Processing is strictly limited to the bottom-right part of the image, where stairs are typically located in broadcast angles.
-    \item \textbf{Directional Filtering} - A morphological kernel of size (31, 1) is used. This kernel preserves features that span across the image while eroding vertical noise.
-    \item \textbf{Filtering} - Detected lines are filtered to ensure they are approximately horizontal.
-    \item \textbf{Choosing feasible pair} - very close lines are eliminated, and the best pair is picked up in the analogous way as in the inrun track detection.
-\end{itemize}
+Detected segments are filtered to remove repeated observations of the same physical line. The filtering compares the angle and distance between candidate segments and keeps the longer segment when two detections are too close. The remaining segments are scored according to their position and distance, and the best pair is selected as the projected inrun tracks.
+
+\subsection{Inrun steps detection}
+The service stairs beside the inrun provide an additional set of approximately parallel lines. Their extraction is limited to the bottom-right part of the frame, where these structures usually appear in the broadcast view. A horizontal morphological kernel preserves stair-like structures while suppressing vertical noise. The Hough transform is then applied, and the resulting segments are filtered to keep only nearly horizontal lines. The best pair is selected using the same distance-based duplicate removal used for the inrun tracks.
 
 \subsection{Detection of the K and HS lines}
-Unlike the previous features, the detection of the K-point and Hill Size (HS) lines on the landing hill proved significantly more challenging and could not be reliably handled by traditional computer vision methods. Consequently, we decided to employ a deep learning approach for this task.
+The K-point and Hill Size markings on the landing hill are more difficult to detect with handcrafted thresholds because their appearance changes with viewpoint, snow texture, and broadcast compression. For this reason, the implementation uses a segmentation model.
 
-To train a model for this segmentation task, we extracted and annotated 400 images. We applied data augmentation techniques, including rotation (between -8\textdegree{} and +8\textdegree{}) and brightness adjustment (between -8\% and +8\%), which expanded the dataset to 970 images. This dataset was split into an \textbf{88\% training set}, a \textbf{7\% validation set}, and a \textbf{5\% test set}.
+A YOLOv8-seg model is fine-tuned on 400 annotated images. Data augmentation with rotations between \(-8^\circ\) and \(+8^\circ\) and brightness variations between \(-8\%\) and \(+8\%\) expands the dataset to 970 images. The split is 88\% for training, 7\% for validation, and 5\% for testing. At inference time, the model returns two masks, one for the K-line and one for the HS-line.
 
-By fine-tuning the YOLOv8-seg architecture, we successfully trained a segmentation model to identify the regions corresponding to the K-line and the HS-line. As a result of the segmentation process on the landing frame, we obtain two binary masks: one representing the K-line and the other the HS-line.
+For each mask, the pixel coordinates are fitted with a least-squares line model \(y = ax + b\). This converts the segmentation output into a compact geometric representation that can be combined with the inrun-line detections and with the camera calibration.
 
-For each detected mask, the system calculates the optimal line parameters $(a, b)$ using a least-squares fit on the mask's pixel coordinates. This provides a robust mathematical representation of the line in the form $y = ax + b$.
+\section{3D reconstruction}
+After calibration and image-space trajectory stabilization, the implementation reconstructs the local slope geometry and lifts the jumper trajectory into the same 3D reference system.
 
-Finally, we constructed a complete pipeline to extract these lines from specific frames:
-\begin{enumerate}
-    \item The video is loaded and changes are detected in the shot.
-    \item Recall the specific frames for the inrun and landing.
-    \item Extract the lines using the trained model and linear fitting.
-\end{enumerate}
+The reconstructed track is modeled as two corresponding parallel curves. Image points on the two curves are resampled, and corresponding points are connected by projected rulings. These rulings converge to a vanishing point, which is estimated with SVD from the corresponding image lines. Using the calibration matrix, the vanishing point is converted into a 3D direction through
+\[
+\mathbf{d} = \frac{K^{-1}\mathbf{v}}{\|K^{-1}\mathbf{v}\|}.
+\]
+This direction defines the normal direction between the two parallel track borders.
 
-\subsection{Moving to the 3D space}
+Each image point is converted into a camera ray by multiplying its homogeneous pixel coordinate by \(K^{-1}\). Given a known or unit track width, corresponding rays from the two track borders are intersected with two parallel planes. The implementation solves the resulting least-squares system for the depths of the two points along their rays. The normal orientation is chosen so that the reconstructed points have positive depth and small residuals.
 
+Finally, the midpoint between the two reconstructed track borders defines the center plane used for the jumper trajectory. A plane-to-image homography is built as
+\[
+H_{\text{plane}\rightarrow\text{image}} = K
+\begin{bmatrix}
+\mathbf{e}_1 & \mathbf{e}_2 & \mathbf{O}
+\end{bmatrix},
+\]
+where \(\mathbf{O}\) is the center-plane origin and \(\mathbf{e}_1,\mathbf{e}_2\) are two basis directions on the plane. The inverse homography maps the stabilized reference-frame trajectory points into plane coordinates, and these coordinates are then converted into 3D points on the reconstructed center plane.

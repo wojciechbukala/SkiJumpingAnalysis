@@ -1,19 +1,19 @@
 from pathlib import Path
 import cv2
 import matplotlib
-from SwitchCam import switchCam as shotChange
-from SwitchCam.switchCam import ShotChange
-from transform.graphtr import Edge
-import transform.graphtr as graph
-import transform.transform as affineTransform
-import jumperTrajectory.trajectory as tj
-from Mask.Masking import JumperProvider
+from src.SwitchCam import switchCam as shotChange
+from src.SwitchCam.switchCam import ShotChange
+from src.transform.graphtr import Edge
+import src.transform.graphtr as graph
+import src.transform.transform as affineTransform
+import src.jumperTrajectory.trajectory as tj
+from src.Mask.Masking import JumperProvider
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import List
-import jumperTrajectory.trajectory as tj
-from jumperTrajectory.smoothing import smooth_trajectory
+import src.jumperTrajectory.trajectory as tj
+from src.jumperTrajectory.smoothing import smooth_trajectory
 """
 SkiJumpingAnalysis - main skeleton
 
@@ -22,6 +22,10 @@ File: main.py
 __version__ = "0.0.5"
 # CHANGE HERE TO SET THE DESIRED MOTION MODEL !!!!!!!!!!!!!!!!!!!!!
 WARP_MODE = cv2.MOTION_AFFINE
+VIDEO_PATH = Path("detectionOutputs/O_20out.mp4")
+CSV_PATH = Path("detectionOutputs/O_20trajectory.csv")
+
+
 def plot_trajectories_2d(
     trajectory_list: list[list[tuple[int, int, int]]],
     output_dir: Path,
@@ -67,25 +71,25 @@ def _segment_edges(edges: list[Edge], start: int, stop: int) -> list[Edge]:
 
 
 
-def main(video_path: Path, csv_path: Path) -> int:
+def main() -> int:
     print(f"SkiJumpingAnalysis {__version__}")
 
     # Load csv data
-    if not csv_path.exists():
-        print(f"CSV file not found: {csv_path}")
+    if not CSV_PATH.exists():
+        print(f"CSV file not found: {CSV_PATH}")
         return 1
-    provider = JumperProvider(str(csv_path))
+    provider = JumperProvider(str(CSV_PATH))
 
     # Open the video and run shot-change detection.
-    cap = cv2.VideoCapture(str(video_path))
+    cap = cv2.VideoCapture(str(VIDEO_PATH))
     if not cap.isOpened():
-        print(f"Could not open video: {video_path}")
+        print(f"Could not open video: {VIDEO_PATH}")
         return 1
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
     changes = shotChange.detect_shot_changes(cap, fps=fps)
 
-    print(f"Video: {video_path}")
+    print(f"Video: {VIDEO_PATH}")
     print(f"Detected changes: {len(changes)}")
     print(shotChange.format_changes(changes))
 
@@ -138,9 +142,5 @@ def main(video_path: Path, csv_path: Path) -> int:
     return 0
 
 if __name__ == "__main__":
-    VIDEO_PATH = Path("detectionOutputs/O_20out.mp4")
-    CSV_PATH = Path("detectionOutputs/O_20trajectory.csv")
-
-    raise SystemExit(main(VIDEO_PATH, CSV_PATH))
-
+    raise SystemExit(main())
 
