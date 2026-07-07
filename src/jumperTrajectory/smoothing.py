@@ -1,39 +1,34 @@
+from __future__ import annotations
+
 import numpy as np
-from scipy.signal import savgol_filter
 
-def smooth_trajectory(traj: list[tuple[float, float, float]], window_size: int = 15, poly_order: int = 2):
-    """
-    Applies a Savitzky-Golay filter to smooth the jumper's trajectory.
-    
-    This filter is ideal for sports analysis because it smooths the data 
-    while preserving the original shape (parabola) and trends better 
-    than a simple moving average.
 
-    Args:
-        traj (list): A list of tuples containing (x, y, frame_index).
-        window_size (int): The length of the filter window. Must be an ODD integer.
-        poly_order (int): The order of the polynomial used to fit the samples.
-                          Must be less than window_size.
-
-    Returns:
-        list: The smoothed trajectory as a list of (x, y, frame_index) tuples.
-    """
-    
-    # Validation: The filter requires at least 'window_size' points to operate.
-    # Also, the polynomial order must be smaller than the window size.
+def smooth_trajectory(
+    traj: list[tuple[float, float, float]],
+    window_size: int = 15,
+    poly_order: int = 2,
+) -> list[tuple[float, float, float]]:
     if not traj or len(traj) < window_size or poly_order >= window_size:
-        # Return original data if smoothing is not mathematically possible
         return traj
 
-    # Extract coordinates into separate numpy arrays for vector processing
-    xs = np.array([p[0] for p in traj])
-    ys = np.array([p[1] for p in traj])
-    frames = [p[2] for p in traj]
+    xs = np.asarray([point[0] for point in traj], dtype=float)
+    ys = np.asarray([point[1] for point in traj], dtype=float)
+    frames = [point[2] for point in traj]
 
-    # Apply the filter to X and Y independently.
-    # Mode 'nearest' helps handle edges by extending the data boundary.
-    smoothed_x = savgol_filter(xs, window_size, poly_order, mode='nearest')
-    smoothed_y = savgol_filter(ys, window_size, poly_order, mode='nearest')
+    try:
+        from scipy.signal import savgol_filter
 
-    # Re-assemble the data back into the original list-of-tuples format
+        smoothed_x = savgol_filter(xs, window_size, poly_order, mode="nearest")
+        smoothed_y = savgol_filter(ys, window_size, poly_order, mode="nearest")
+    except ImportError:
+        smoothed_x = _moving_average(xs, window_size)
+        smoothed_y = _moving_average(ys, window_size)
+
     return list(zip(smoothed_x, smoothed_y, frames))
+
+
+def _moving_average(values: np.ndarray, window_size: int) -> np.ndarray:
+    radius = window_size // 2
+    padded = np.pad(values, (radius, radius), mode="edge")
+    kernel = np.ones(window_size, dtype=float) / float(window_size)
+    return np.convolve(padded, kernel, mode="valid")

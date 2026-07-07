@@ -1,8 +1,16 @@
 from pathlib import Path
 import sys
 import cv2
-import os
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 import src.SwitchCam.switchCam as shotChange
+
+
+VIDEO_PATH = Path("detectionOutputs/G_60out.mp4")
+
 
 def visualize_intervals(video_path, intervals, output_path=None):
     cap = cv2.VideoCapture(video_path)
@@ -72,9 +80,7 @@ def find_inrun_frame(camera_intervals):
 
 def main() -> int:
     # Resolve the video path from the project root.
-    root_dir = Path(__file__).resolve().parents[1]
-    # Set the path to the video file.
-    video_path = root_dir / "detectionOutputs/G_30out.mp4"
+    video_path = VIDEO_PATH if VIDEO_PATH.is_absolute() else PROJECT_ROOT / VIDEO_PATH
 
     # Open the video and run shot-change detection.
     cap = cv2.VideoCapture(video_path)

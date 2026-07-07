@@ -18,18 +18,18 @@ from pathlib import Path
 import cv2
 
 
-VIDEO_PATH = Path("detectionOutputs/G_30out.mp4")
+VIDEO_PATH = Path("detectionOutputs/G_60out.mp4")
 FALLBACK_VIDEO_PATHS = [
     Path("src/experiments/Detection_outputs_examples/G_30out.mp4"),
 ]
 
-WINDOW_NAME = "G_30 frame picker"
+WINDOW_NAME = "G_60 frame picker"
 DISPLAY_SCALE = 0.75
 START_FRAME = 0
 PLAYBACK_DELAY_MS = 30
 
-SAVE_SELECTED_FRAME = False
-SELECTED_FRAME_OUTPUT = Path("outputGeometry/G_30_selected_frame.jpg")
+SAVE_SELECTED_FRAME = True
+SELECTED_FRAME_OUTPUT = Path("outputGeometry/selected_frame.jpg")
 
 
 # Resolve the input video path
@@ -65,7 +65,7 @@ def draw_overlay(frame, frame_index: int, total_frames: int, fps: float, paused:
     status = "PAUSA" if paused else "PLAY"
     lines = [
         f"{status} | frame {frame_index}/{max(0, total_frames - 1)} | t={time_seconds:.3f}s ({format_time(time_seconds)})",
-        "Spazio: pausa/play | frecce/A-D: indietro-avanti | Enter: stampa frame | S: salva | Q: esci",
+        "Spazio: pausa/play | frecce/A-D: indietro-avanti | Enter: seleziona e salva | S: salva | Q: esci",
     ]
 
     y = 34
@@ -97,9 +97,8 @@ def print_selection(video_path: Path, frame_index: int, fps: float) -> None:
 # Save the chosen frame
 def save_selected_frame(frame, frame_index: int) -> None:
     SELECTED_FRAME_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    output_path = SELECTED_FRAME_OUTPUT.with_name(f"{SELECTED_FRAME_OUTPUT.stem}_{frame_index:05d}{SELECTED_FRAME_OUTPUT.suffix}")
-    cv2.imwrite(str(output_path), frame)
-    print(f"Frame salvato: {output_path}")
+    cv2.imwrite(str(SELECTED_FRAME_OUTPUT), frame)
+    print(f"Frame salvato: {SELECTED_FRAME_OUTPUT}")
 
 
 # Run the frame selection workflow
@@ -127,7 +126,7 @@ def main() -> int:
     print(f"Video aperto: {video_path}")
     print(f"FPS: {fps:.6f}")
     print(f"Frame totali: {total_frames}")
-    print("Premi Enter sul frame desiderato per stamparlo nel terminale.")
+    print(f"Premi Enter sul frame desiderato per salvarlo in: {SELECTED_FRAME_OUTPUT}")
 
     while True:
         cv2.imshow(WINDOW_NAME, scaled_for_display(draw_overlay(frame, frame_index, total_frames, fps, paused)))

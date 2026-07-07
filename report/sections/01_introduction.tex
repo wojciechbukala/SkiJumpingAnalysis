@@ -1,21 +1,31 @@
+\section*{Project context}
+
+This work extends the initial project developed by Edoardo Tedesco, Daniele Spini, and Wojciech Bukala.
+The first version of the project focused on reconstructing the jumper trajectory in 2D from video, without including camera calibration or a 3D reconstruction stage.
+The current version builds on that foundation by adding the remaining components needed to move from the stabilized 2D trajectory to a 3D trajectory, including camera calibration, scene geometry estimation, and trajectory put onto the reconstructed slope reference plane.
+
 \section{The problem formulation}
 
-Ski jumping is a competitive winter sport where aerodynamic performance, take-off dynamics, and in-flight posture determine the length and safety of each jump.
-Accurate reconstruction of a jumper's trajectory is essential for performance analysis, coaching feedback, and injury prevention. 
-This project focuses on developing a robust pipeline to reconstruct two-dimensional trajectories of ski jumpers using only avaible online video recordings.
+This project addresses the problem of reconstructing the three-dimensional trajectory of a ski jumper from a video sequence.
+The input is a broadcast-style video, where the athlete is observed from one or more moving cameras and where camera cuts, zoom, motion blur, and partial occlusions may occur.
 
-The main objectives are: to design and implement algorithms for precise spatiotemporal tracking of the athlete during in-run, take-off, flight and landing phases;
- Methodologically, the project explores camera calibration(not for now), multi-view geometry, pose estimation, filtering techniques (e.g. Kalman or particle filters), and optimization-based smoothing.
+The main task is to estimate the image position of the jumper over time, compensate for camera motion, and map the resulting 2D trajectory into a 3D reference frame derived from the visible geometry of the ski-jumping hill.
+This requires combining object detection, segmentation, temporal filtering, shot segmentation, frame-to-frame alignment, camera calibration, and geometric reconstruction.
 
-Expected outcomes include a reproducible implementation for trajectory reconstruction, quantitative performance metrics (accuracy, latency, robustness), and guidelines for practical deployment in training environments. 
-The remainder of the report describes related work, the chosen methods and system design, experimental results, and conclusions with future directions.
+The expected output is a reproducible implementation that produces a stabilized 3D trajectory under the geometric assumptions described in the following sections.
+The remainder of the report describes the adopted methods, the implementation, the experimental results, and the main limitations of the approach.
 
 \section{Used technologies and algorithms}
 
 \begin{itemize}
-    \item \textbf{YOLOv8} - A state-of-the-art real-time object detection system. In this project, YOLOv8 is utilized to precisely locate the ski jumper in every video frame, providing bounding box coordinates that serve as the foundational data for trajectory estimation.
-    \item \textbf{SAM3} - A image segmentation model developed by Meta AI. Used to generate high-fidelity binary masks of the jumper. It ensures that the jumper's movement does not interfere with the background stabilization algorithms.
-    \item \textbf{ECC} - An iterative algorithm for parametric image alignment that is robust to photometric distortions. In this project, ECC is employed to estimate the geometric transformation (homography) between consecutive video frames by maximizing the correlation coefficient, effectively compensating for global camera motion.
-    \item \textbf{RANSAC} - An iterative method for robust parameter estimation in datasets containing a significant number of outliers. It is utilized to filter feature matches during the homography calculation, ensuring that the background stabilization relies exclusively on static scene elements while ignoring the moving jumper and other noise.
+    \item \textbf{YOLOv8} - Used to detect and track the ski jumper in the video frames. The resulting bounding boxes define the region of interest for the following segmentation and trajectory extraction steps.
+    \item \textbf{Segment Anything Model (SAM)} - Used inside the detected bounding box to obtain a binary mask of the jumper. The mask is used to compute the image-space center of mass and to exclude the athlete from background motion estimation.
+    \item \textbf{Kalman filtering} - Applied to the detected center-of-mass sequence to reduce frame-to-frame jitter and obtain a smoother 2D trajectory before geometric processing.
+    \item \textbf{HSV histogram shot detection} - Used to split broadcast videos into camera intervals by detecting abrupt changes in color distribution between consecutive frames.
+    \item \textbf{SIFT feature matching} - Used to extract and match background keypoints between consecutive frames. Lowe's ratio test is applied to reject ambiguous matches.
+    \item \textbf{RANSAC and affine transformations} - Used to estimate robust frame-to-frame camera motion from matched background features and to map trajectory points into a common reference frame.
+    \item \textbf{camera calibration} - Used to estimate the camera intrinsic matrix from scene geometry, exploiting projected parallel and orthogonal directions.
+    \item \textbf{3D geometric reconstruction} - Used to reconstruct the slope reference geometry and lift the stabilized 2D jumper trajectory onto the estimated 3D center plane.
+    \item \textbf{Savitzky-Golay smoothing} - Applied as a final smoothing step to reduce residual noise in the reconstructed trajectory.
+    \item \textbf{Matplotlib} - Used to generate the static 3D plot and the interactive visualization of the reconstructed trajectory.
 \end{itemize}
-

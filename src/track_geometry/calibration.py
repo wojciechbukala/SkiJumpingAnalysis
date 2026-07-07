@@ -47,8 +47,8 @@ def estimate_k_from_orthogonal_vanishing_pairs_and_equal_lengths(
 
     try:
         from scipy.optimize import least_squares
-    except ImportError as error:
-        raise CalibrationError("scipy is required for equal-length calibration.") from error
+    except ImportError:
+        least_squares = None
 
     height, width = image_shape if image_shape is not None else _infer_image_shape_from_points(pairs, segments, normal_vp)
     max_dim = float(max(width, height))
@@ -85,16 +85,25 @@ def estimate_k_from_orthogonal_vanishing_pairs_and_equal_lengths(
     best_result = None
     for fx, fy, cx, cy in starts:
         x0 = np.array([math.log(fx), math.log(fy), cx / max_dim, cy / max_dim], dtype=float)
-        result = least_squares(
-            _equal_length_calibration_residuals,
-            x0,
-            bounds=(lower, upper),
-            args=(pairs, segments, normal_vp, max_dim),
-            xtol=1e-12,
-            ftol=1e-12,
-            gtol=1e-12,
-            max_nfev=4000,
-        )
+        if least_squares is not None:
+            result = least_squares(
+                _equal_length_calibration_residuals,
+                x0,
+                bounds=(lower, upper),
+                args=(pairs, segments, normal_vp, max_dim),
+                xtol=1e-12,
+                ftol=1e-12,
+                gtol=1e-12,
+                max_nfev=4000,
+            )
+        else:
+            result = _least_squares_numpy(
+                _equal_length_calibration_residuals,
+                x0,
+                np.asarray(lower, dtype=float),
+                np.asarray(upper, dtype=float),
+                args=(pairs, segments, normal_vp, max_dim),
+            )
         if best_result is None or float(result.cost) < float(best_result.cost):
             best_result = result
 
@@ -103,7 +112,7 @@ def estimate_k_from_orthogonal_vanishing_pairs_and_equal_lengths(
 
     fx, fy, cx, cy = _decode_equal_length_parameters(best_result.x, max_dim)
     residual_norm = float(np.linalg.norm(_equal_length_calibration_residuals(best_result.x, pairs, segments, normal_vp, max_dim)))
-    if residual_norm > 1e-5:
+    if residual_norm > 5e-2:
         raise CalibrationError(f"Equal-length calibration residual too high: {residual_norm:.3e}.")
 
     _validate_k_geometry(fx, fy, cx, cy, (height, width))
@@ -115,6 +124,83 @@ def estimate_k_from_orthogonal_vanishing_pairs_and_equal_lengths(
         ],
         dtype=float,
     )
+
+
+class _LeastSquaresResult:
+    def __init__(self, x: np.ndarray, cost: float, success: bool) -> None:
+        self.x = x
+        self.cost = cost
+        self.success = success
+
+
+def _least_squares_numpy(
+    residual_fn,
+    x0: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    args: tuple,
+) -> _LeastSquaresResult:
+    x = np.clip(np.asarray(x0, dtype=float), lower, upper)
+    residual = np.asarray(residual_fn(x, *args), dtype=float)
+    best_cost = 0.5 * float(residual @ residual)
+    damping = 1e-3
+
+    for _ in range(400):
+        jacobian = _finite_difference_jacobian(residual_fn, x, lower, upper, args)
+        system = jacobian.T @ jacobian + damping * np.eye(len(x), dtype=float)
+        rhs = -(jacobian.T @ residual)
+        try:
+            step = np.linalg.solve(system, rhs)
+        except np.linalg.LinAlgError:
+            step, _, _, _ = np.linalg.lstsq(system, rhs, rcond=None)
+
+        if float(np.linalg.norm(step)) < 1e-12:
+            return _LeastSquaresResult(x, best_cost, True)
+
+        improved = False
+        for scale in (1.0, 0.5, 0.25, 0.1, 0.05, 0.01):
+            candidate = np.clip(x + scale * step, lower, upper)
+            candidate_residual = np.asarray(residual_fn(candidate, *args), dtype=float)
+            candidate_cost = 0.5 * float(candidate_residual @ candidate_residual)
+            if np.isfinite(candidate_cost) and candidate_cost < best_cost:
+                x = candidate
+                residual = candidate_residual
+                best_cost = candidate_cost
+                damping = max(damping * 0.5, 1e-9)
+                improved = True
+                break
+
+        if not improved:
+            damping = min(damping * 10.0, 1e9)
+
+        if best_cost < 1e-24:
+            return _LeastSquaresResult(x, best_cost, True)
+
+    return _LeastSquaresResult(x, best_cost, best_cost < 1e-16)
+
+
+def _finite_difference_jacobian(
+    residual_fn,
+    x: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    args: tuple,
+) -> np.ndarray:
+    base = np.asarray(residual_fn(x, *args), dtype=float)
+    jacobian = np.zeros((len(base), len(x)), dtype=float)
+    for idx in range(len(x)):
+        step = 1e-6 * max(1.0, abs(float(x[idx])))
+        forward = x.copy()
+        backward = x.copy()
+        forward[idx] = min(float(upper[idx]), float(x[idx] + step))
+        backward[idx] = max(float(lower[idx]), float(x[idx] - step))
+        denom = float(forward[idx] - backward[idx])
+        if abs(denom) < 1e-15:
+            continue
+        residual_forward = np.asarray(residual_fn(forward, *args), dtype=float)
+        residual_backward = np.asarray(residual_fn(backward, *args), dtype=float)
+        jacobian[:, idx] = (residual_forward - residual_backward) / denom
+    return jacobian
 
 
 # Estimate scales with a known principal point

@@ -1,122 +1,86 @@
 \section{Solution}
-We decomposed the problem of estimating the ski jumper’s trajectory into a sequence of well-defined sub-tasks, so that each component could be designed, tested, and improved independently.
+The proposed pipeline is organized into five main stages: athlete localization, temporal filtering, shot segmentation, camera-motion compensation, and trajectory mapping to a common reference frame.
 
 \medskip
 
 \textbf{Athlete detection (YOLO) and ROI extraction.}  
-For each frame we detect the athlete using YOLO. The resulting bounding box is used to define a region of interest (ROI) that focuses computation on the jumper area and reduces sensitivity to irrelevant image content. This step also provides a consistent input for the downstream segmentation and tracking modules.
+For each frame, YOLO detects the jumper and provides the bounding box used as the region of interest for segmentation and tracking.
 
 \medskip
 
-\textbf{Pixel-level segmentation (SAM3) and center-of-mass measurement.}  
-Given the ROI, we apply SAM3 to obtain a pixel-accurate segmentation mask of the jumper. From this binary mask we compute the athlete’s \textbf{center of mass (CoM)} by averaging the pixel coordinates belonging to the foreground region. The CoM is used as the primary measurement to represent the jumper position over time and produces an initial (raw) 2D trajectory in image coordinates.
+\textbf{Pixel-level segmentation (SAM) and center-of-mass measurement.}  
+SAM is applied inside the ROI to obtain the jumper mask. The center of mass of the mask is used as the image-space measurement of the jumper position.
 
 \medskip
 
 \textbf{Temporal stabilization (Kalman filter).}  
-Raw CoM measurements can exhibit jitter and occasional outliers due to segmentation noise, partial occlusions, and motion blur. To enforce temporal coherence, we apply a Kalman filter to the CoM sequence (constant-velocity motion model). This provides a smoother and more reliable stream of observations while preserving the overall dynamics of the motion, and it reduces the impact of isolated bad measurements.
+The raw center-of-mass sequence is filtered with a constant-velocity Kalman filter to reduce jitter and isolated segmentation errors.
 
 \medskip
 
 \textbf{Shot segmentation (HSV cut detection).}  
-Broadcast ski-jumping videos are multi-camera and contain abrupt viewpoint changes. Since geometric alignment is only meaningful within a consistent viewpoint, we explicitly detect camera switches. We use an HSV-based method that flags frames where the global color distribution changes sharply, which is a strong indicator of a cut. The video is then split into homogeneous segments (\textbf{shots}) that are processed independently.
+Camera cuts are detected by comparing consecutive HSV histograms. The video is split into homogeneous shots, which are processed independently because frame alignment is meaningful only within a consistent viewpoint.
 
 \medskip
 
 \textbf{Per-shot motion compensation (feature-based alignment).}  
-For each shot, we choose as reference the \textbf{first frame in which the jumper is visible} and express all subsequent measurements in this reference coordinate system. To compensate for camera motion, we estimate the transformation between \textbf{consecutive frames} using a feature-based pipeline:
-
-\begin{itemize}
-    \item \textbf{Grayscale conversion and background masking.}  
-    Frames are converted to grayscale for feature extraction. To avoid bias from the moving athlete, we restrict feature detection to the \textbf{static background} using a valid-pixel mask (derived from the segmentation), so that the estimated motion reflects camera motion rather than object motion.
-
-    \item \textbf{SIFT keypoints and descriptors.}  
-    We extract SIFT keypoints and descriptors on the masked images. SIFT is well-suited to this scenario because it is relatively robust to scale changes and moderate viewpoint changes.
-
-    \item \textbf{Descriptor matching with L2 norm + Lowe ratio test.}  
-    SIFT descriptors are real-valued vectors, therefore we match them using the \textbf{Euclidean distance (L2 norm)} in descriptor space. However, raw nearest-neighbor matching is often unreliable in scenes with repeated textures (e.g., snow patterns, stands).  
-    To reject ambiguous correspondences, we perform \textbf{k matching with $k=2$} and apply the \textbf{Lowe ratio test}: a match is accepted only if the best match is significantly closer than the second-best one (in our implementation, threshold $0.75$). This filters out many unstable matches and improves robustness before geometric estimation.
-\end{itemize}
-
-\medskip
-
-\textbf{Robust transform estimation with RANSAC (affine partial 2D).}  
-Even after the ratio test, some outliers remain (mismatches, dynamic elements, blur). We therefore estimate the inter-frame transformation using \textbf{RANSAC} inside \texttt{estimateAffinePartial2D}. RANSAC repeatedly:
-(1) samples a minimal subset of correspondences,  
-(2) fits a candidate model,  
-(3) classifies inliers using a reprojection error threshold (3 pixels in our setup), and  
-(4) selects the model with the largest consensus set.  
-This makes the estimation robust to outliers and prevents a small number of wrong matches from corrupting the motion model. We additionally validate the solution by requiring a minimum number of inliers and a minimum inlier ratio; otherwise we fall back to the identity transform for that step.
-
-\medskip
-
-We adopt an \textbf{affine partial 2D} model (translation + rotation + isotropic scale, no shear). Compared to a full homography, this model is more stable in our sequences, where motion blur and limited texture can cause projective estimation to overfit and drift.
+For each shot, the reference is a frame selected by the user, chosen among the frames where the jumper and the relevant scene geometry are visible. Consecutive-frame motion is estimated on grayscale frames while masking the jumper bounding box and broadcast overlays. In the current implementation, SIFT keypoints are matched with L2 distance and Lowe's ratio test; a homography is then estimated with RANSAC. If the homography estimate is not reliable, the pipeline falls back to an affine model or, when necessary, to the identity transform.
 
 \medskip
 
 \textbf{Cumulative composition to the shot reference.}  
-Let $W_{k\rightarrow k-1}$ be the affine partial transform mapping coordinates from frame $k$ to frame $k-1$. We build the mapping from each frame to the reference frame $0$ via cumulative composition:
+Let \(W_{k\rightarrow k-1}\) be the pairwise transformation mapping coordinates from frame \(k\) to frame \(k-1\). Let \(r\) be the user-selected reference frame, and let \(H_{k\rightarrow r}\) be the cumulative transformation that maps image coordinates from frame \(k\) to the reference frame \(r\). For the reference frame itself, the cumulative transformation is the identity:
 \[
-H_{0\rightarrow 0} = I, \qquad
-H_{k\rightarrow 0} = W_{k\rightarrow k-1}\, H_{k-1\rightarrow 0}.
+H_{r\rightarrow r} = I.
 \]
-Given the filtered CoM measurement $p_k = (x_k, y_k)$, we transform it into the reference coordinate system using homogeneous coordinates:
+For any other frame, \(H_{k\rightarrow r}\) is obtained by composing the pairwise transformations forward or backward along the selected camera interval. Given the filtered center-of-mass measurement \(p_k = (x_k, y_k)\), we transform it into the reference coordinate system using homogeneous coordinates:
 \[
-\tilde{p}_k \sim H_{k\rightarrow 0}\,[x_k \; y_k \; 1]^T.
+\tilde{p}_k \sim H_{k\rightarrow r}\,[x_k \; y_k \; 1]^T.
 \]
 This produces a trajectory that is consistent within each shot and compensated for camera motion.
 
 \medskip
 
 \textbf{Final output.}  
-The final result is a set of per-shot trajectories expressed in a common reference frame for each shot.
+The final result is a trajectory for the selected camera interval, expressed in the user-selected reference frame.
 
 \section{From 2D to 3D}
-Once the 2D detections have been stabilized, all trajectory points are expressed in a single
-\emph{reference frame} (the chosen keyframe) by composing the inter-frame warps.
-In this way, the motion is no longer described in a moving camera coordinate system, but in a
-common image coordinate system where geometric reasoning becomes consistent.
+Once the 2D detections have been stabilized, all trajectory points are expressed in the
+user-selected reference frame by composing the inter-frame transformations. The 3D stage then uses
+the slope geometry reconstructed by the previous modules, rather than estimating a new plane
+rectification from the trajectory frames alone.
 
 \medskip
 
-Our goal is then to remove the remaining \emph{perspective distortion} by reasoning directly on the
-reference frame. Since we assume that the jumper trajectory lies on a single physical plane
-(\(Z=0\)), the problem reduces to estimating the relationship between the camera and this plane,
-and then unprojecting the stabilized 2D trajectory onto the plane.
-
-\medskip
-
-To do so, we need the following information (all extracted on the reference frame):
-(i) geometric cues that belong to the motion plane, such as two (or more) sets of \emph{parallel lines}
-in the real world (e.g., track edges, fence/rail lines, painted markings), which allow estimating the
-\emph{vanishing points} and therefore the \emph{vanishing line} \(l_\infty\) of the plane;
-(ii) either the camera intrinsics \(K\) (from calibration) \emph{or} additional metric constraints
-(orthogonality on the plane, known aspect ratio, or a known distance) to upgrade the rectification
-from affine to metric.
-
-\medskip
-
-Given the vanishing line \(l_\infty\) and \(K\), the normal of the trajectory plane in camera coordinates
-can be recovered up to scale (in particular, \(n \propto K^{-T} l_\infty\)).
-This directly provides the \emph{angle between the camera and the plane} by comparing \(n\) with the
-camera optical axis \(e_z\):
+The slope reconstruction provides the camera matrix \(K\), two reconstructed track borders, the
+track normal, and a center plane between the two borders. The center plane is represented by its
+origin \(\mathbf{O}_c\) and by two basis directions \(\mathbf{e}_1\) and \(\mathbf{e}_2\). Let
+\(\mathbf{n}\) be the reconstructed normal between the two track borders, let \(w\) be the track
+width used by the reconstruction, and let \(\mathbf{O}_A\) be the first reconstructed point on one
+track border. The corresponding point on the parallel border is
+\(\mathbf{O}_B=\mathbf{O}_A+w\mathbf{n}\), so the origin of the center plane is
 \[
-\theta_{\text{plane}} = \arccos\!\left(\frac{n^\top e_z}{\|n\|}\right).
+\mathbf{O}_c = \frac{\mathbf{O}_A+\mathbf{O}_B}{2}.
 \]
-After estimating the plane geometry, we rectify the reference frame with a plane-induced homography
-\(H_{\text{rect}}\) that maps the plane to a fronto-parallel (metric) coordinate system.
-In practice, this homography can be obtained either (a) from point correspondences between the image
-and a planar layout with known geometry, or (b) by enforcing the vanishing-line constraint for affine
-rectification and then applying metric constraints to obtain a Euclidean rectification.
-The angle of the trajectory on the plane is given by the iformation on the slope.
+The first basis direction \(\mathbf{e}_1\) is obtained from the direction of the reconstructed track
+border, projected onto the plane orthogonal to \(\mathbf{n}\) and normalized. The second basis
+direction is then chosen as \(\mathbf{e}_2=\mathbf{n}\times\mathbf{e}_1\). From this information the
+code builds the homography
+\(H_{\text{image}\rightarrow\text{center}}\) that maps image points in the reference frame to
+coordinates on the center plane.
+
 \medskip
 
-Finally, each original measurement \(p_t\) is mapped to plane (metric) coordinates by composing
-stabilization and rectification:
+For a frame \(t\), let \(p_t\) be the measured 2D jumper point in the original image, let
+\(H_{t\rightarrow r}\) be the cumulative transform from frame \(t\) to the reference frame \(r\),
+and let \(\mathbf{q}_t\) be the corresponding point in center-plane coordinates. The mapping is:
 \[
-\tilde{p}_t \sim H_{\text{rect}}\,H^{\text{ref}}_t\,p_t,
+\mathbf{q}_t \sim H_{\text{image}\rightarrow\text{center}}\,H_{t\rightarrow r}\,p_t .
 \]
-where \(H^{\text{ref}}_t\) maps frame \(t\) into the reference frame, and \(H_{\text{rect}}\) removes perspective
-on the motion plane. The resulting trajectory is expressed in a planar metric coordinate system, and
-the 3D trajectory is obtained by lifting it as \((X_t, Y_t, 0)\) under the \(Z=0\) assumption (with an
-optional global scale set by one known distance on the plane).
+If \(\mathbf{q}_t=(u_t,v_t)\), where \(u_t\) and \(v_t\) are the two coordinates on the center-plane
+basis, then the 3D point \(\mathbf{X}_t\) is obtained as:
+\[
+\mathbf{X}_t = \mathbf{O}_{c} + u_t \mathbf{e}_1 + v_t \mathbf{e}_2 .
+\]
+Thus, the reported 3D trajectory is the stabilized jumper trajectory lifted onto the reconstructed
+center plane of the slope.

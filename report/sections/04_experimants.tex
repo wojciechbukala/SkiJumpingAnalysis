@@ -45,7 +45,7 @@ Along the output video with drawn bounding box in every frame pipeline produces 
     \item \textit{kf\_y} - y component of the Kalman filter output,
     \item \textit{score} - score for \texttt{Media pipe} (not used in the final version),
     \item \textit{pose} - 1 if \texttt{Media pipe} used and 0 if not (not used in the final version),
-    \item \textit{sam} - 1 if \texttt{SAM3} used and 0 if not.
+    \item \textit{sam} - 1 if \texttt{SAM} used and 0 if not.
 \end{itemize}
 
 \begin{table}[!ht]
@@ -79,7 +79,7 @@ Along the output video with drawn bounding box in every frame pipeline produces 
 \end{table}
 
 \section{Transformations between frames}
-The goal of this stage is to estimate the \textbf{global camera motion} inside each shot, so that every detected jumper position can be expressed in a common reference system (we use the \textbf{first frame of the shot} as reference). Since shot boundaries introduce discontinuities (different viewpoint/zoom), we first perform \textbf{shot-change detection} and process each shot independently. \textit{(Implementation: shot segmentation and per-shot processing loop.)}
+The goal of this stage is to estimate the \textbf{global camera motion} inside the selected camera interval, so that every detected jumper position can be expressed in a common reference system. The reference is a frame selected by the user. Since shot boundaries introduce discontinuities (different viewpoint/zoom), we first perform \textbf{shot-change detection} and process the selected interval independently. \textit{(Implementation: shot segmentation and selected-interval processing loop.)}
 
 \subsection{Motion estimation: ECC vs feature-based RANSAC}
 We implemented two alternative strategies to estimate the transformation between consecutive frames:
@@ -104,17 +104,14 @@ We implemented two alternative strategies to estimate the transformation between
     \label{fig:ecc_traj}
 \end{figure}
 
-\subsection{Choosing the warp model: homography vs affine vs partial affine}
+\subsection{Choosing the warp model: homography and affine fallback}
 A key design choice is the \textbf{parametric motion model}. In the hierarchy of 2D transformations, a homography (projective transform) is the most general model for mapping one plane to another, while affine/similarity models are more constrained and typically more stable in the presence of noise.
 
 \paragraph{Homography (projective, 8 DoF).}
-We first tested a full homography. While theoretically powerful, it is \textbf{not stable} in our scenario: ski-jumping broadcast videos usually contain \textbf{parallax} (scene points at different depths), slight zoom changes, motion blur, and repeated textures (snow, stands). In these conditions, a projective model can overfit mismatches, producing unrealistic perspective/shear artifacts that amplify drift when composed over time.
+The current implementation first estimates a homography with RANSAC. This is the most flexible model available in the pipeline and can represent the dominant projective camera motion between two consecutive frames.
 
 \paragraph{Affine (6 DoF).}
-Switching to an affine model already improves stability, because it removes projective distortions and reduces overfitting. However, full affine still allows shear, which can be triggered by residual mismatches and gradually distort the reference frame over long compositions.
-
-\paragraph{Partial affine / similarity (4 DoF).}
-Our final choice is \textbf{affine partial 2D} (OpenCV \texttt{estimateAffinePartial2D}), which corresponds to a similarity-like transform (translation + rotation + isotropic scale, without shear). This is a good compromise: it captures the dominant camera motion while being sufficiently constrained to reduce drift and deformation.
+If the homography score is not reliable, the code tries an affine fallback. If this also fails, the identity transform is used for that frame pair and the corresponding motion score is propagated to mark the affected trajectory points as less reliable.
 
 \begin{figure}[H]
     \centering
@@ -124,26 +121,26 @@ Our final choice is \textbf{affine partial 2D} (OpenCV \texttt{estimateAffinePar
 \end{figure}
 
 \section{How we propagate transformations through time}
-Once pairwise transformations are available, the remaining question is how to obtain, for each frame $k$, a transform $H_{k\rightarrow 0}$ mapping points from frame $k$ to the reference frame $0$ of the current shot.
+Once pairwise transformations are available, the remaining question is how to obtain, for each frame \(k\), a cumulative transform \(H_{k\rightarrow r}\) mapping points from frame \(k\) to the user-selected reference frame \(r\) of the current camera interval.
 
 \paragraph{Cumulative composition (final choice).}
-For each shot we set:
+Let \(H_{r\rightarrow r}\) be the identity transform at the reference frame, and let \(H_{k\rightarrow k-1}\) be the pairwise transform from frame \(k\) to the previous frame. For frames after the reference frame, the cumulative composition is:
 \[
-H_{0\rightarrow 0} = I,\qquad
-H_{k\rightarrow 0} = H_{k\rightarrow k-1}\,H_{k-1\rightarrow 0}.
+H_{r\rightarrow r} = I,\qquad
+H_{k\rightarrow r} = H_{k-1\rightarrow r}\,H_{k\rightarrow k-1}.
 \]
-Given a detected jumper point $p_k = (x_k,y_k)$, we map it to the reference as
+For frames before the reference frame, the implementation composes the inverse pairwise transformations. Given a detected jumper point \(p_k = (x_k,y_k)\), we map it to the reference as
 \[
-\tilde p_k \sim H_{k\rightarrow 0}\,[x_k\; y_k\; 1]^T.
+\tilde p_k \sim H_{k\rightarrow r}\,[x_k\; y_k\; 1]^T.
 \]
-This is the approach used to generate the final trajectories (per-shot), and it corresponds to the \texttt{cumulative} branch in our trajectory code.
+This is the approach used to generate the final trajectory for the selected camera interval.
 
 \paragraph{Graph-based global estimation (tested, not selected).}
-We also experimented with a graph formulation: each frame is a node, and each estimated motion constraint is an edge $(i,j)$ with a warp $W_{ij}$ (mapping $i\rightarrow j$) and a confidence weight. We solve for all per-frame transforms $\{H_i\}$ by minimizing a weighted consistency error of the form
+We also experimented with a graph formulation. In this formulation, \(E\) is the set of graph edges; each frame is a node; each edge \((i,j)\in E\) stores a warp \(W_{ij}\), mapping frame \(i\) to frame \(j\), and a confidence weight \(w_{ij}\). The unknowns are the per-frame transforms \(\{H_i\}\). We solve for them by minimizing a weighted consistency error of the form
 \[
 \sum_{(i,j)\in E} w_{ij}\,\lVert H_i - H_j W_{ij}\rVert^2,
 \]
-plus a gauge constraint $H_{\text{ref}} = I$ to fix the reference frame. The system is assembled as a sparse least-squares problem and solved with LSQR; we also included an IRLS-style robust reweighting step to downweight inconsistent edges.
+plus a gauge constraint \(H_{\text{ref}} = I\) to fix the reference frame. The system is assembled as a sparse least-squares problem and solved with LSQR; we also included an IRLS-style robust reweighting step to downweight inconsistent edges.
 
 In theory, adding longer edges (e.g., $k\rightarrow k-2$, $k\rightarrow k-3$) should create loops and reduce drift. In practice, the result was not competitive on our data. The final graph trajectories showed more artifacts than the simple cumulative baseline, therefore we kept the cumulative approach.
 
@@ -171,8 +168,7 @@ In theory, adding longer edges (e.g., $k\rightarrow k-2$, $k\rightarrow k-3$) sh
 \end{figure}
 
 \section{Fitting lines and homography problem}\label{sec:homography}
-After aligning the trajectory to a common reference frame (via inter-frame \emph{partial affine 2D}
-stabilization), we investigated a plane-rectification approach based on vanishing geometry.
+After aligning the trajectory to a common reference frame, we investigated a plane-rectification approach based on vanishing geometry.
 In principle, estimating an affine and then metric rectification of the motion plane requires detecting
 (at least) two dominant directions on the plane, i.e., two sets of real-world parallel lines, ideally
 with one set perpendicular to the other.
@@ -238,9 +234,9 @@ In the landing frame, the main limitation is the lack of a second pair of reliab
 \section{Final pipeline choice}
 To summarize, the final configuration used in the project is:
 \begin{itemize}
-    \item per-shot processing (shot-change detection and reset of the reference);
+    \item selected-camera processing after shot-change detection;
     \item background-only motion estimation via masking;
     \item SIFT matching + RANSAC estimation;
-    \item \textbf{partial affine 2D} motion model;
-    \item \textbf{cumulative} composition to obtain $H_{k\rightarrow 0}$ and map the jumper trajectory.
+    \item homography motion model with affine fallback when needed;
+    \item \textbf{cumulative} composition to obtain \(H_{k\rightarrow r}\) and map the jumper trajectory to the user-selected reference frame \(r\).
 \end{itemize}

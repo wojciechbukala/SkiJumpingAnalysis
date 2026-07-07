@@ -1,11 +1,11 @@
 \section{Camera calibration}
 The first step of the implementation is the estimation of the camera intrinsic matrix. This calibration is required because the later geometric stages need to convert image points into camera rays and to interpret vanishing points as 3D directions.
 
-The camera is modeled with the pinhole projection equation
+Let \(\mathbf{X}\) be a 3D scene point, let \(\mathbf{x}\) be its homogeneous image projection, let \(K\) be the intrinsic matrix, and let \([R \mid t]\) be the camera extrinsic matrix. The camera is modeled with the pinhole projection equation
 \[
 \mathbf{x} \sim K [R \mid t] \mathbf{X},
 \]
-where \(\mathbf{X}\) is a 3D scene point, \(\mathbf{x}\) is its homogeneous image projection, and \(K\) is the intrinsic matrix. In the implemented calibration, zero skew is assumed and the matrix has the form
+where \(\sim\) denotes equality up to scale. In the implemented calibration, zero skew is assumed. Let \(f_x\) and \(f_y\) be the focal lengths in pixel units, and let \((c_x,c_y)\) be the principal point. The intrinsic matrix has the form
 \[
 K =
 \begin{bmatrix}
@@ -14,36 +14,35 @@ f_x & 0 & c_x \\
 0 & 0 & 1
 \end{bmatrix}.
 \]
-Since no checkerboard sequence is available, the calibration is obtained from scene geometry. The method exploits the fact that 3D parallel lines are projected to image lines that meet at a common vanishing point. Moreover, if two 3D directions are orthogonal, their corresponding vanishing points \(\mathbf{v}_i\) and \(\mathbf{v}_j\) satisfy
+Since no checkerboard sequence is available, the calibration is obtained from scene geometry. The method exploits the fact that 3D parallel lines are projected to image lines that meet at a common vanishing point. Let \(\mathbf{v}_i\) and \(\mathbf{v}_j\) be the vanishing points associated with two orthogonal 3D directions, and let \(\omega\) be the image of the absolute conic, defined from the intrinsic matrix as \(K^{-\top}K^{-1}\). The orthogonality constraint is
 \[
 \mathbf{v}_i^\top \omega \mathbf{v}_j = 0,
 \qquad
-\omega = K^{-\top}K^{-1},
+\omega = K^{-\top}K^{-1}.
 \]
-where \(\omega\) is the image of the absolute conic.
 
-The calibration script starts from a frame that contains enough stable geometric information. In the current run, the selected frame is \texttt{extracted\_frames/G\_30out\_frame\_00004.jpg}. The frame is converted to grayscale, blurred, enhanced with CLAHE, and combined with the Sobel gradient magnitude in order to emphasize structural edges. Canny edge detection and a small morphological closing are then applied to obtain a cleaner edge map.
+The calibration script starts from a frame that contains enough stable geometric information. The frame is converted to grayscale, blurred, enhanced with CLAHE, and combined with the Sobel gradient magnitude in order to emphasize structural edges. Canny edge detection and a small morphological closing are then applied to obtain a cleaner edge map.
 
 Line segments are extracted from two regions of interest. The main detector searches the lower part of the image, starting at 60\% of the frame height, where the most useful track and snow-border structures are visible. A second detector searches the upper half of the frame to provide an additional geometric direction. The implementation uses OpenCV's Line Segment Detector as the default detector; a probabilistic Hough detector is also available but disabled in the current configuration. Candidate segments are filtered by length, line width, and edge support. Near-duplicate detections are removed by comparing their orientation, midpoint distance, and point-to-line distance. The remaining segments are numbered and saved as preview images and CSV files so that the useful lines can be selected explicitly.
 
-The user then groups the detected segments according to the 3D direction they represent. Each group must contain at least two image segments that are parallel in the real scene. In the current configuration, three main line groups are selected, plus one additional upper group. For a segment with endpoints \(\mathbf{p}_1\) and \(\mathbf{p}_2\), the corresponding homogeneous image line is computed as
+The user then groups the detected segments according to the 3D direction they represent. Each group must contain at least two image segments that are parallel in the real scene. In the current configuration, three main line groups are selected, plus one additional upper group. For a segment with homogeneous endpoints \(\mathbf{p}_1\) and \(\mathbf{p}_2\), let \(\ell\) be the corresponding homogeneous image line. It is computed as
 \[
 \ell = \mathbf{p}_1 \times \mathbf{p}_2.
 \]
-For each selected group, all line equations are stacked in a matrix \(L\). The vanishing point is estimated as the least-squares intersection of these lines by solving
+For each selected group, all line equations are stacked in a matrix \(L\). Let \(\mathbf{v}\) be the vanishing point of that group. It is estimated as the least-squares intersection of the lines by solving
 \[
 L\mathbf{v} = 0
 \]
 with singular value decomposition. The solution is the right singular vector associated with the smallest singular value and is normalized so that the third homogeneous coordinate is equal to one.
 
-After the vanishing points have been estimated, the selected directions are treated as orthogonal constraints. With the principal point fixed at the image center and with non-square pixels allowed, the orthogonality equation becomes
+After the vanishing points have been estimated, the selected directions are treated as orthogonal constraints. Let \((u_i,v_i)\) and \((u_j,v_j)\) be the image coordinates of two vanishing points associated with orthogonal directions. With the principal point \((c_x,c_y)\) fixed at the image center and with non-square pixels allowed, the orthogonality equation becomes
 \[
 \frac{(u_i-c_x)(u_j-c_x)}{f_x^2}
 +
 \frac{(v_i-c_y)(v_j-c_y)}{f_y^2}
-+ 1 = 0,
++ 1 = 0.
 \]
-where \((u_i,v_i)\) and \((u_j,v_j)\) are two vanishing points. By defining \(a_x = 1/f_x^2\) and \(a_y = 1/f_y^2\), each orthogonal pair gives a linear equation in \(a_x\) and \(a_y\). The implementation solves this overdetermined system with least squares and then recovers \(f_x\) and \(f_y\). The current calibration output is saved in \texttt{outputGeometry/calibration\_K.json} and gives
+By defining \(a_x = 1/f_x^2\) and \(a_y = 1/f_y^2\), each orthogonal pair gives a linear equation in \(a_x\) and \(a_y\). The implementation solves this overdetermined system with least squares and then recovers \(f_x\) and \(f_y\). The current calibration output is saved in \texttt{outputGeometry/calibration\_K.json} and gives
 \[
 K =
 \begin{bmatrix}
@@ -86,7 +85,7 @@ For each pair of consecutive frames in the selected camera interval, the impleme
 The motion module supports both ECC alignment and a feature-based branch. In the current configuration, the feature-based branch is used. SIFT keypoints and descriptors are extracted on the valid image regions, descriptors are matched with the Euclidean distance, and Lowe's ratio test is applied to reject ambiguous matches. A homography is then estimated with RANSAC, using the current-frame points as source points and the previous-frame points as target points. If the homography estimate is unreliable, the pipeline can fall back to an affine model.
 
 \subsection{Mapping points to a reference frame}
-The pairwise transformations are normalized as \(3 \times 3\) homographies and composed along the camera interval. If the reference frame is \(r\), a point measured in frame \(t\) is mapped into the reference coordinate system by
+The pairwise transformations are normalized as \(3 \times 3\) homographies and composed along the camera interval. Let \(r\) be the reference frame, let \(\mathbf{p}_t\) be a point measured in frame \(t\), let \(H_{t \rightarrow r}\) be the cumulative transform from frame \(t\) to frame \(r\), and let \(\tilde{\mathbf{p}}_t\) be the mapped point in the reference coordinate system. The mapping is
 \[
 \tilde{\mathbf{p}}_t \sim H_{t \rightarrow r}\mathbf{p}_t.
 \]
@@ -117,7 +116,7 @@ For each mask, the pixel coordinates are fitted with a least-squares line model 
 \section{3D reconstruction}
 After calibration and image-space trajectory stabilization, the implementation reconstructs the local slope geometry and lifts the jumper trajectory into the same 3D reference system.
 
-The reconstructed track is modeled as two corresponding parallel curves. Image points on the two curves are resampled, and corresponding points are connected by projected rulings. These rulings converge to a vanishing point, which is estimated with SVD from the corresponding image lines. Using the calibration matrix, the vanishing point is converted into a 3D direction through
+The reconstructed track is modeled as two corresponding parallel curves. Image points on the two curves are resampled, and corresponding points are connected by projected rulings. These rulings converge to a vanishing point, which is estimated with SVD from the corresponding image lines. Let \(\mathbf{v}\) be this vanishing point, let \(K\) be the camera intrinsic matrix, and let \(\mathbf{d}\) be the corresponding unit 3D direction in camera coordinates. The conversion is
 \[
 \mathbf{d} = \frac{K^{-1}\mathbf{v}}{\|K^{-1}\mathbf{v}\|}.
 \]
@@ -125,11 +124,30 @@ This direction defines the normal direction between the two parallel track borde
 
 Each image point is converted into a camera ray by multiplying its homogeneous pixel coordinate by \(K^{-1}\). Given a known or unit track width, corresponding rays from the two track borders are intersected with two parallel planes. The implementation solves the resulting least-squares system for the depths of the two points along their rays. The normal orientation is chosen so that the reconstructed points have positive depth and small residuals.
 
-Finally, the midpoint between the two reconstructed track borders defines the center plane used for the jumper trajectory. A plane-to-image homography is built as
+Finally, the midpoint between the two reconstructed track borders defines the center plane used for the jumper trajectory. Let \(\mathbf{n}\) be the oriented normal between the two track borders, let \(w\) be the reconstructed track width, and let \(\mathbf{P}^A_1,\ldots,\mathbf{P}^A_N\) be the reconstructed points on one border. The implementation takes the first point of this border as \(\mathbf{O}_A=\mathbf{P}^A_1\) and defines the corresponding origin on the parallel border as
+\[
+\mathbf{O}_B = \mathbf{O}_A + w\mathbf{n}.
+\]
+The origin of the center plane is the midpoint between these two origins:
+\[
+\mathbf{O}_c = \frac{\mathbf{O}_A+\mathbf{O}_B}{2}.
+\]
+
+The plane basis is derived from the reconstructed border direction. Let \(\mathbf{a}=\mathbf{P}^A_N-\mathbf{P}^A_1\) be the direction from the first to the last reconstructed point on the border. Since this vector can contain a small component along the normal, it is projected onto the plane orthogonal to \(\mathbf{n}\) and normalized:
+\[
+\mathbf{e}_1 =
+\frac{\mathbf{a}-(\mathbf{a}^\top\mathbf{n})\mathbf{n}}
+{\left\|\mathbf{a}-(\mathbf{a}^\top\mathbf{n})\mathbf{n}\right\|}.
+\]
+The second direction is chosen orthogonal to both the normal and \(\mathbf{e}_1\):
+\[
+\mathbf{e}_2 = \mathbf{n}\times\mathbf{e}_1.
+\]
+These two vectors define the coordinate axes on the center plane. Let \(H_{\text{plane}\rightarrow\text{image}}\) be the homography from center-plane coordinates to image coordinates. The homography is built as
 \[
 H_{\text{plane}\rightarrow\text{image}} = K
 \begin{bmatrix}
-\mathbf{e}_1 & \mathbf{e}_2 & \mathbf{O}
-\end{bmatrix},
+\mathbf{e}_1 & \mathbf{e}_2 & \mathbf{O}_c
+\end{bmatrix}.
 \]
-where \(\mathbf{O}\) is the center-plane origin and \(\mathbf{e}_1,\mathbf{e}_2\) are two basis directions on the plane. The inverse homography maps the stabilized reference-frame trajectory points into plane coordinates, and these coordinates are then converted into 3D points on the reconstructed center plane.
+The inverse homography maps the stabilized reference-frame trajectory points into plane coordinates, and these coordinates are then converted into 3D points on the reconstructed center plane.
