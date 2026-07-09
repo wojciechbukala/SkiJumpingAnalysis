@@ -18,12 +18,12 @@ from pathlib import Path
 import cv2
 
 
-VIDEO_PATH = Path("detectionOutputs/G_60out.mp4")
+VIDEO_PATH = Path("detectionOutputs/G_30out.mp4")
 FALLBACK_VIDEO_PATHS = [
-    Path("src/experiments/Detection_outputs_examples/G_30out.mp4"),
+    Path("src/experiments/Detection_outputs_examples/G_20out.mp4"),
 ]
 
-WINDOW_NAME = "G_60 frame picker"
+WINDOW_NAME = "G_30 frame picker"
 DISPLAY_SCALE = 0.75
 START_FRAME = 0
 PLAYBACK_DELAY_MS = 30

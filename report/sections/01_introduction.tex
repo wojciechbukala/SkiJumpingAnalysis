@@ -20,12 +20,12 @@ The remainder of the report describes the adopted methods, the implementation, t
 \begin{itemize}
     \item \textbf{YOLOv8} - Used to detect and track the ski jumper in the video frames. The resulting bounding boxes define the region of interest for the following segmentation and trajectory extraction steps.
     \item \textbf{Segment Anything Model (SAM)} - Used inside the detected bounding box to obtain a binary mask of the jumper. The mask is used to compute the image-space center of mass and to exclude the athlete from background motion estimation.
-    \item \textbf{Kalman filtering} - Applied to the detected center-of-mass sequence to reduce frame-to-frame jitter and obtain a smoother 2D trajectory before geometric processing.
+    \item \textbf{Kalman filtering} - Applied to the detected center-of-mass sequence as the current temporal filter, reducing frame-to-frame jitter before geometric processing.
     \item \textbf{HSV histogram shot detection} - Used to split broadcast videos into camera intervals by detecting abrupt changes in color distribution between consecutive frames.
     \item \textbf{SIFT feature matching} - Used to extract and match background keypoints between consecutive frames. Lowe's ratio test is applied to reject ambiguous matches.
     \item \textbf{RANSAC and affine transformations} - Used to estimate robust frame-to-frame camera motion from matched background features and to map trajectory points into a common reference frame.
     \item \textbf{camera calibration} - Used to estimate the camera intrinsic matrix from scene geometry, exploiting projected parallel and orthogonal directions.
     \item \textbf{3D geometric reconstruction} - Used to reconstruct the slope reference geometry and lift the stabilized 2D jumper trajectory onto the estimated 3D center plane.
-    \item \textbf{Savitzky-Golay smoothing} - Applied as a final smoothing step to reduce residual noise in the reconstructed trajectory.
+    \item \textbf{Motion-score reliability filtering} - Used after camera-motion compensation to mark low-confidence mapped trajectory points and keep the final visualization focused on reliable samples.
     \item \textbf{Matplotlib} - Used to generate the static 3D plot and the interactive visualization of the reconstructed trajectory.
 \end{itemize}

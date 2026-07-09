@@ -43,7 +43,10 @@
 \usepackage{tabularx}
 \usepackage{adjustbox}     % resize tabelle/figure se serve
 
-\graphicspath{{figures/}}
+\makeatletter
+\def\input@path{{./}{report/}}
+\makeatother
+\graphicspath{{./}{report/}{figures/}{report/figures/}}
 
 % ----------------------------
 % LISTS + LINKS + REFERENCES
@@ -124,10 +127,7 @@
 \chapter{Solution}
 \input{sections/02_solution_approach}
 
-\chapter{Algorithm design}
-\input{sections/03_implementation}
-
-\chapter{Experiments}
+\chapter{Experiments and Code}
 \input{sections/04_experimants}
 
 \chapter{Conclusion}

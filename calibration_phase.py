@@ -19,9 +19,9 @@ from src.calibration.workflow import run_calibration
 FRAME_PATH = SELECTED_FRAME_OUTPUT
 MAX_LINES = 120
 SELECTED_LINE_GROUPS = [
-    [82, 79, 13, 3, 22],
-    [33, 81, 37, 42, 11, 1, 40, 7, 10],
-    [70, 90, 55, 34],
+    [15,16,13,9,11,10,12,14],
+    [5,7,8,17,6],
+    [0,1,3,4],
 ]
 EQUAL_LENGTH_SEGMENTS: list[tuple[tuple[float, float], tuple[float, float]]] | None = None
 EQUAL_LENGTH_PLANE_NORMAL_GROUP = 3
